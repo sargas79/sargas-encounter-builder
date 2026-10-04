@@ -1,6 +1,6 @@
 {
   "name": "sargas-encounter-builder",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "GM encounter workspace for the Pathfinder Second Edition system on Foundry VTT",
   "type": "module",

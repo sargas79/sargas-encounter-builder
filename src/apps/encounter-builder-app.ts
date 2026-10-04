@@ -1107,13 +1107,23 @@ export function meterContext(evaluation: DraftEvaluation): Record<string, unknow
       selected: evaluation.selectedThreat === threat,
     };
   });
+  // Adjacent tier labels can sit ~11% apart, which is less than a label's width in a narrow
+  // panel. Drop a label onto a second row when it would collide with the previous one on its row.
+  const MIN_GAP = 16;
+  let lastRow0: number | null = null;
+  const tiersStaggered = tiers.map((tier) => {
+    const row = lastRow0 === null || tier.left - lastRow0 >= MIN_GAP ? 0 : 1;
+    if (row === 0) lastRow0 = tier.left;
+    return { ...tier, row };
+  });
   const inferred = evaluation.inferred;
   let inferredLabel =
     inferred.label === "beyondExtreme" ? t("evaluation.beyondExtreme") : t(`threat.${inferred.label}`);
   if (inferred.unquantified) inferredLabel += ` ${t("evaluation.unquantified")}`;
   const over = evaluation.difference !== null && evaluation.difference > 0;
   return {
-    tiers,
+    tiers: tiersStaggered,
+    staggered: tiersStaggered.some((tier) => tier.row === 1),
     fill: pct(evaluation.supportedXP),
     supportedXP: evaluation.supportedXP,
     target: evaluation.tier?.available ? evaluation.tier.target : null,

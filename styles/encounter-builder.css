@@ -1118,6 +1118,15 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
+.seb-meter-tick.is-row-2 {
+  height: 17px;
+}
+.seb-meter-tick.is-row-2 > span {
+  top: 18px;
+}
+.seb-meter.is-staggered {
+  padding-bottom: 30px;
+}
 .seb-meter-tick.is-selected > span {
   color: var(--seb-text);
   font-weight: 600;
