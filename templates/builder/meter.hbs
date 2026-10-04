@@ -1,5 +1,5 @@
 {{!-- Threat meter: tiers along a track, target tick, actual fill. Expects `meter`. --}}
-<div class="seb-meter {{meter.stateClass}}">
+<div class="seb-meter {{meter.stateClass}}{{#if meter.staggered}} is-staggered{{/if}}">
   <div class="seb-meter-head">
     <span class="seb-meter-xp"><strong>{{meter.supportedXP}}</strong> XP{{#if meter.target}} <span class="seb-text-dim">/ {{meter.target}}</span>{{/if}}{{#if meter.differenceLabel}} <span class="seb-meter-diff">{{meter.differenceLabel}}</span>{{/if}}</span>
     <span class="seb-meter-inferred">{{localize "sargas-encounter-builder.evaluation.inferred"}}: <strong>{{meter.inferredLabel}}</strong>{{#unless meter.complete}} · <span class="seb-text-warn">{{localize "sargas-encounter-builder.evaluation.incomplete"}}</span>{{/unless}}</span>
@@ -7,7 +7,7 @@
   <div class="seb-meter-track">
     <div class="seb-meter-fill" style="width: {{meter.fill}}%"></div>
     {{#if meter.targetLeft}}<div class="seb-meter-target" style="left: {{meter.targetLeft}}%" data-tooltip="{{localize 'sargas-encounter-builder.evaluation.target'}}: {{meter.target}} XP"></div>{{/if}}
-    {{#each meter.tiers}}<div class="seb-meter-tick{{#if this.selected}} is-selected{{/if}}" style="left: {{this.left}}%" data-tooltip="{{this.label}}: {{this.target}} XP"><span>{{this.label}}</span></div>{{/each}}
+    {{#each meter.tiers}}<div class="seb-meter-tick{{#if this.selected}} is-selected{{/if}}{{#if this.row}} is-row-2{{/if}}" style="left: {{this.left}}%" data-tooltip="{{this.label}}: {{this.target}} XP"><span>{{this.label}}</span></div>{{/each}}
   </div>
   {{#if meter.warnings.length}}
   <div class="seb-meter-notes">{{#each meter.warnings}}<span class="seb-note is-{{this.level}} is-inline">{{this.text}}</span>{{/each}}</div>

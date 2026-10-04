@@ -2,7 +2,7 @@
   "id": "sargas-encounter-builder",
   "title": "Sargas - Encounter Builder",
   "description": "GM workspace for Pathfinder Second Edition: party profiles, XP budgets, compendium creature browsing, balanced random generation, classic encounter tables, saved encounters, and explicit scene deployment.",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "authors": [
     {
       "name": "Diego Vescovini",

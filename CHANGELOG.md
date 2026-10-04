@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4
+
+- Threat meter: tier labels that would overlap (Low and Moderate at narrow widths) now drop onto a
+  second row instead of drawing over each other.
+
 ## 0.3.3
 
 - Build › Browse: typing in the search box no longer drops or garbles characters. A search now updates
