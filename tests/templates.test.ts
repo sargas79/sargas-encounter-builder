@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * template is rendered with an "everything on" context (all conditionals true, every list one
  * item) and an empty one, and the result must be a single element either way.
  */
-const PARTIALS = ["generator", "meter", "snapshot", "creature-row"];
+const PARTIALS = ["generator", "meter", "snapshot", "creature-row", "catalog-list"];
 const PARTS = [
   ...readdirSync("templates/builder")
     .filter((f) => f.endsWith(".hbs") && !PARTIALS.includes(f.replace(/\.hbs$/, "")))

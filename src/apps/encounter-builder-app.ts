@@ -32,6 +32,7 @@ import {
   getDragEventData,
   isGM,
   loadTemplates,
+  renderTemplate,
 } from "../foundry/compat.js";
 import { t } from "../foundry/i18n.js";
 import type { ResolvedParty } from "../foundry/party-service.js";
@@ -429,7 +430,42 @@ export class EncounterBuilderApp extends Base {
       console.error(`${MODULE_ID} | search failed`, error);
       this.state.results = [];
     }
-    if (this.rendered) await this.render({ parts: ["build"] });
+    if (!this.rendered) return;
+    // Re-rendering the part while the GM is typing replaces the search box under the caret, which
+    // drops keystrokes and breaks dead-key/IME input. Patch the list in place instead.
+    if (this.#searchHasFocus()) await this.#patchCatalogList();
+    else await this.render({ parts: ["build"] });
+  }
+
+  #searchHasFocus(): boolean {
+    const active = document.activeElement as HTMLInputElement | null;
+    return !!active && active.name === "filter.search" && this.element.contains(active);
+  }
+
+  /** Swap only the catalog rows and count, leaving the filter inputs (and their focus) untouched. */
+  async #patchCatalogList(): Promise<void> {
+    const root: HTMLElement = this.element;
+    const list = root.querySelector<HTMLElement>(".seb-catalog-list");
+    if (!list) return;
+    const { catalog } = services();
+    const build = {
+      noPacks: catalog.selectedPackIds().length === 0,
+      results: this.#resultsContext(),
+    };
+    list.innerHTML = await renderTemplate(`${TEMPLATES}/catalog-list.hbs`, { busy: this.state.busy, build });
+    const count = root.querySelector<HTMLElement>(".seb-catalog-count");
+    if (count) count.textContent = String(this.state.results.length);
+  }
+
+  #resultsContext(): Record<string, unknown>[] {
+    const ref = this.state.resolved?.roster.reference.level ?? null;
+    return this.state.results.map((entry) => ({
+      ...entry,
+      relative: ref != null ? signed(entry.level - ref) : "",
+      traitsShort: entry.traits.slice(0, 4),
+      moreTraits: Math.max(0, entry.traits.length - 4),
+      rarityClass: entry.rarity !== "common" ? `is-${entry.rarity}` : "",
+    }));
   }
 
   /* -------------------------------------------- */
@@ -503,13 +539,7 @@ export class EncounterBuilderApp extends Base {
         isBrowse: this.state.buildMode === "browse",
         isGenerate: this.state.buildMode === "generate",
         filter: this.state.filter,
-        results: this.state.results.map((entry) => ({
-          ...entry,
-          relative: roster?.reference.level != null ? signed(entry.level - roster.reference.level) : "",
-          traitsShort: entry.traits.slice(0, 4),
-          moreTraits: Math.max(0, entry.traits.length - 4),
-          rarityClass: entry.rarity !== "common" ? `is-${entry.rarity}` : "",
-        })),
+        results: this.#resultsContext(),
         resultCount: this.state.results.length,
         draft: this.state.draft.entries.map((entry) => {
           const ev = evaluation?.entries.find((e) => e.id === entry.uuid);
@@ -1047,6 +1077,7 @@ export const PARTIALS = [
   `${TEMPLATES}/meter.hbs`,
   `${TEMPLATES}/snapshot.hbs`,
   `${TEMPLATES}/creature-row.hbs`,
+  `${TEMPLATES}/catalog-list.hbs`,
 ];
 let partialsLoaded = false;
 export async function ensurePartials(): Promise<void> {

@@ -45,16 +45,8 @@
       </div>
 
       {{#if build.isBrowse}}
-      <div class="seb-group-header seb-sticky"><span>{{localize "sargas-encounter-builder.build.catalog"}}</span><span class="seb-text-dim">{{build.resultCount}}</span></div>
-      <div class="seb-scroll seb-list">
-        {{#if busy}}<div class="seb-note"><i class="fa-solid fa-spinner fa-spin"></i> {{localize "sargas-encounter-builder.build.loading"}}</div>{{/if}}
-        {{#if build.noPacks}}<div class="seb-empty"><i class="fa-solid fa-book"></i><p class="seb-empty-title">{{localize "sargas-encounter-builder.build.noPacksTitle"}}</p><p class="seb-empty-hint">{{localize "sargas-encounter-builder.build.noPacks"}}</p></div>
-        {{else}}
-          {{#each build.results}}{{> "modules/sargas-encounter-builder/templates/builder/creature-row.hbs" this}}{{else}}
-          {{#unless ../busy}}<div class="seb-empty"><i class="fa-solid fa-ghost"></i><p class="seb-empty-title">{{localize "sargas-encounter-builder.build.noResultsTitle"}}</p><p class="seb-empty-hint">{{localize "sargas-encounter-builder.build.noResults"}}</p></div>{{/unless}}
-          {{/each}}
-        {{/if}}
-      </div>
+      <div class="seb-group-header seb-sticky"><span>{{localize "sargas-encounter-builder.build.catalog"}}</span><span class="seb-text-dim seb-catalog-count">{{build.resultCount}}</span></div>
+      <div class="seb-scroll seb-list seb-catalog-list">{{> "modules/sargas-encounter-builder/templates/builder/catalog-list.hbs"}}</div>
       {{/if}}
     </div>
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+- Build › Browse: typing in the search box no longer drops or garbles characters. A search now updates
+  the catalog rows in place while the box has focus instead of re-rendering the whole panel under the
+  caret.
+
 ## 0.3.2
 
 Review fixes for the treasure generator:
