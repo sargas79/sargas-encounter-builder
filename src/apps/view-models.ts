@@ -2,6 +2,7 @@
  * View-model helpers: turn core results into the plain objects the Handlebars templates read.
  * No Foundry access beyond `t()` (which falls back to the key outside Foundry), so they run in tests.
  */
+import { MODULE_ID } from "../constants.js";
 import { THREAT_LEVELS, tierBudget } from "../core/budget.js";
 import { totalCreatures, type Draft, type DraftEvaluation } from "../core/draft.js";
 import type { PackLoadState } from "../foundry/creature-catalog.js";
@@ -31,6 +32,13 @@ export function tabsContext(activeTab: TabId, ready: boolean): Record<string, un
     disabled: GATED_TABS.includes(id) && !ready,
     tooltip: GATED_TABS.includes(id) && !ready ? t("gate.tooltip") : "",
   }));
+}
+
+/** Localized actor type; an unknown system or module type falls back to its raw name. */
+export function actorTypeLabel(type: string): string {
+  const key = `actorType.${type}`;
+  const label = t(key);
+  return label === `${MODULE_ID}.${key}` ? type : label;
 }
 
 export function signed(n: number): string {

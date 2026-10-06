@@ -1,7 +1,7 @@
-<nav class="seb-tabs" role="tablist">
+<nav class="seb-tabs" role="tablist" aria-label="{{localize 'sargas-encounter-builder.app.title'}}">
   {{#each tabs}}
-  <button type="button" class="seb-tab-button{{#if this.active}} is-active{{/if}}" role="tab" aria-selected="{{#if this.active}}true{{else}}false{{/if}}" data-action="selectTab" data-tab="{{this.id}}" {{#if this.disabled}}disabled data-tooltip="{{this.tooltip}}"{{/if}}>
-    <i class="{{this.icon}}"></i> {{this.label}}
+  <button type="button" class="seb-tab-button{{#if this.active}} is-active{{/if}}" role="tab" id="seb-tab-{{this.id}}" aria-controls="seb-panel-{{this.id}}" aria-selected="{{#if this.active}}true{{else}}false{{/if}}" tabindex="{{#if this.active}}0{{else}}-1{{/if}}" data-action="selectTab" data-tab="{{this.id}}" {{#if this.disabled}}disabled data-tooltip="{{this.tooltip}}"{{/if}}>
+    <i class="{{this.icon}}" aria-hidden="true"></i> {{this.label}}
   </button>
   {{/each}}
 </nav>

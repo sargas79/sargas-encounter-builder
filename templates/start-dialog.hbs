@@ -10,9 +10,9 @@
     {{#unless hasPartyActors}}<p class="seb-hint">{{localize "sargas-encounter-builder.start.noPartyActors"}}</p>{{/unless}}
   </div>
   <div class="seb-field">
-    <label>{{localize "sargas-encounter-builder.start.threat"}}</label>
+    <label id="seb-start-threat-label">{{localize "sargas-encounter-builder.start.threat"}}</label>
     <input type="hidden" name="threat" value="{{#each threats}}{{#if this.active}}{{this.value}}{{/if}}{{/each}}">
-    <div class="seb-segments" data-segment-group="threat" role="group">{{#each threats}}<button type="button" class="seb-segment{{#if this.active}} is-active{{/if}}" data-value="{{this.value}}" aria-pressed="{{#if this.active}}true{{else}}false{{/if}}">{{this.label}}</button>{{/each}}</div>
+    <div class="seb-segments" data-segment-group="threat" role="group" aria-labelledby="seb-start-threat-label">{{#each threats}}<button type="button" class="seb-segment{{#if this.active}} is-active{{/if}}" data-value="{{this.value}}" aria-pressed="{{#if this.active}}true{{else}}false{{/if}}">{{this.label}}</button>{{/each}}</div>
   </div>
   <div class="seb-form-row">
     <div class="seb-field seb-field-wide">
@@ -23,9 +23,9 @@
     <div class="seb-field seb-field-short" data-manual-level><label for="seb-start-manual">{{localize "sargas-encounter-builder.party.manualLevel"}}</label><input id="seb-start-manual" type="number" name="manualLevel" min="1" max="20" value="{{manualLevel}}"></div>
   </div>
   <div class="seb-field">
-    <label>{{localize "sargas-encounter-builder.start.modeLabel"}}</label>
+    <label id="seb-start-mode-label">{{localize "sargas-encounter-builder.start.modeLabel"}}</label>
     <input type="hidden" name="mode" value="{{#each modes}}{{#if this.active}}{{this.value}}{{/if}}{{/each}}">
-    <div class="seb-mode-grid" data-segment-group="mode" role="group">
+    <div class="seb-mode-grid" data-segment-group="mode" role="group" aria-labelledby="seb-start-mode-label">
       {{#each modes}}<button type="button" class="seb-segment seb-mode{{#if this.active}} is-active{{/if}}" data-value="{{this.value}}" aria-pressed="{{#if this.active}}true{{else}}false{{/if}}"><i class="{{this.icon}}"></i><span class="seb-mode-label">{{this.label}}</span><span class="seb-mode-hint">{{this.hint}}</span></button>{{/each}}
     </div>
   </div>

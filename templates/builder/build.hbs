@@ -1,4 +1,4 @@
-<section class="seb-tab" data-tab="build">
+<section class="seb-tab" id="seb-panel-build" role="tabpanel" aria-labelledby="seb-tab-build" data-tab="build">
   {{#unless ready}}
   <div class="seb-empty seb-gate"><i class="fa-solid fa-lock"></i><p class="seb-empty-title">{{gate.title}}</p><p class="seb-empty-hint">{{gate.hint}}</p><button type="button" class="seb-button seb-button-primary" data-action="changeParty"><i class="fa-solid fa-dragon"></i> {{localize "sargas-encounter-builder.party.startDialog"}}</button></div>
   {{else}}
@@ -30,17 +30,17 @@
       <div class="seb-filters{{#if build.isGenerate}} is-compact{{/if}}">
         {{#if build.isBrowse}}
         <div class="seb-field seb-field-wide">
-          <label>{{localize "sargas-encounter-builder.build.search"}}</label>
-          <div class="seb-search-wrap"><i class="fa-solid fa-magnifying-glass"></i><input type="search" name="filter.search" value="{{build.filter.search}}" placeholder="{{localize 'sargas-encounter-builder.build.searchPlaceholder'}}" autocomplete="off"></div>
+          <label for="seb-build-search">{{localize "sargas-encounter-builder.build.search"}}</label>
+          <div class="seb-search-wrap"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" id="seb-build-search" name="filter.search" value="{{build.filter.search}}" placeholder="{{localize 'sargas-encounter-builder.build.searchPlaceholder'}}" autocomplete="off"></div>
         </div>
-        <div class="seb-field seb-field-short"><label>{{localize "sargas-encounter-builder.build.relativeMin"}}</label><input type="number" name="filter.relativeMin" value="{{build.filter.relativeMin}}"></div>
-        <div class="seb-field seb-field-short"><label>{{localize "sargas-encounter-builder.build.relativeMax"}}</label><input type="number" name="filter.relativeMax" value="{{build.filter.relativeMax}}"></div>
+        <div class="seb-field seb-field-short"><label for="seb-build-relmin">{{localize "sargas-encounter-builder.build.relativeMin"}}</label><input type="number" id="seb-build-relmin" name="filter.relativeMin" value="{{build.filter.relativeMin}}"></div>
+        <div class="seb-field seb-field-short"><label for="seb-build-relmax">{{localize "sargas-encounter-builder.build.relativeMax"}}</label><input type="number" id="seb-build-relmax" name="filter.relativeMax" value="{{build.filter.relativeMax}}"></div>
         {{/if}}
-        <div class="seb-field"><label>{{localize "sargas-encounter-builder.build.traits"}}</label><input type="text" name="filter.traits" value="{{build.traits}}" placeholder="undead, fire"></div>
-        <div class="seb-field"><label>{{localize "sargas-encounter-builder.build.tags"}}</label><input type="text" name="filter.tags" value="{{build.tags}}" list="seb-tag-list" placeholder="environment:forest"><datalist id="seb-tag-list">{{#each build.allTags}}<option value="{{this}}"></option>{{/each}}</datalist></div>
+        <div class="seb-field"><label for="seb-build-traits">{{localize "sargas-encounter-builder.build.traits"}}</label><input type="text" id="seb-build-traits" name="filter.traits" value="{{build.traits}}" placeholder="undead, fire"></div>
+        <div class="seb-field"><label for="seb-build-tags">{{localize "sargas-encounter-builder.build.tags"}}</label><input type="text" id="seb-build-tags" name="filter.tags" value="{{build.tags}}" list="seb-tag-list" placeholder="environment:forest"><datalist id="seb-tag-list">{{#each build.allTags}}<option value="{{this}}"></option>{{/each}}</datalist></div>
         <div class="seb-field seb-field-wide">
-          <label>{{localize "sargas-encounter-builder.build.rarity"}}</label>
-          <div class="seb-chips" role="group">{{#each build.rarities}}<button type="button" class="seb-chip{{#if this.active}} is-active{{/if}}" data-action="setRarity" data-value="{{this.value}}" aria-pressed="{{#if this.active}}true{{else}}false{{/if}}">{{this.label}}</button>{{/each}}</div>
+          <label id="seb-build-rarity-label">{{localize "sargas-encounter-builder.build.rarity"}}</label>
+          <div class="seb-chips" role="group" aria-labelledby="seb-build-rarity-label">{{#each build.rarities}}<button type="button" class="seb-chip{{#if this.active}} is-active{{/if}}" data-action="setRarity" data-value="{{this.value}}" aria-pressed="{{#if this.active}}true{{else}}false{{/if}}">{{this.label}}</button>{{/each}}</div>
         </div>
       </div>
 

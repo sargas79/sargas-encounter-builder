@@ -6,6 +6,7 @@
 import { DOCUMENT_NAMES, FLAGS, MODULE_ID } from "../constants.js";
 import { emptyTagStore, emptyThemeStore } from "../core/schemas.js";
 import { documentClass, ownershipLevels } from "./compat.js";
+import { localizedDocumentName } from "./module-folders.js";
 
 export function isDataJournal(doc: Pick<FoundryDocument, "getFlag"> | null | undefined): boolean {
   try {
@@ -31,7 +32,7 @@ export async function ensureDataJournal(): Promise<JournalEntryDocument> {
   if (!creating) {
     const levels = ownershipLevels();
     const pending = documentClass("JournalEntry").create({
-      name: DOCUMENT_NAMES.dataJournal,
+      name: localizedDocumentName("documents.dataJournal", DOCUMENT_NAMES.dataJournal),
       ownership: { default: levels.NONE },
       flags: {
         [MODULE_ID]: {

@@ -28,6 +28,7 @@ import { getSetting } from "../foundry/settings.js";
 import { CatalogPanel } from "./catalog-panel.js";
 import { DeployPanel } from "./deploy-panel.js";
 import { GeneratorPanel } from "./generator-panel.js";
+import { handleKeyboardActivation } from "./keyboard.js";
 import { route, type Panel, type PanelAction } from "./panel.js";
 import { PartyPanel } from "./party-panel.js";
 import { SavedPanel } from "./saved-panel.js";
@@ -49,9 +50,13 @@ const TEMPLATES = `modules/${MODULE_ID}/templates/builder`;
 type BuildMode = "browse" | "generate";
 
 interface Message {
+  id: number;
   level: "info" | "warn" | "error" | "ok";
   text: string;
 }
+
+/** Info and success messages clear themselves after this long; warnings and errors stay until dismissed. */
+const MESSAGE_TTL_MS = 8000;
 
 export interface BuilderState {
   resolved: ResolvedParty | null;
@@ -87,6 +92,7 @@ export class EncounterBuilderApp extends Base {
       changeParty: EncounterBuilderApp.#onChangeParty,
       setThreat: EncounterBuilderApp.#onSetThreat,
       setBuildMode: EncounterBuilderApp.#onSetBuildMode,
+      dismissMessage: EncounterBuilderApp.#onDismissMessage,
       // party
       createProfile: route("party", "createProfile"),
       linkPartyActor: route("party", "linkPartyActor"),
@@ -137,6 +143,8 @@ export class EncounterBuilderApp extends Base {
   activeTab: TabId = "build";
   #unsubscribe: (() => void)[] = [];
   #listenersAttached = false;
+  #nextMessageId = 1;
+  #messageTimers = new Map<number, ReturnType<typeof setTimeout>>();
   /** Serialised party data last rendered, so unrelated actor updates do not repaint the window. */
   #partySignature = "";
   /** Asked in this order for input changes and drops; keys double as `data-ext` values. */
@@ -247,6 +255,9 @@ export class EncounterBuilderApp extends Base {
     for (const off of this.#unsubscribe) off();
     this.#unsubscribe = [];
     for (const panel of this.#panelList()) panel.dispose?.();
+    for (const timer of this.#messageTimers.values()) clearTimeout(timer);
+    this.#messageTimers.clear();
+    this.state.messages = [];
     this.#listenersAttached = false;
     EncounterBuilderApp.#instance = null;
   }
@@ -261,7 +272,9 @@ export class EncounterBuilderApp extends Base {
       const catalog = this.panels.catalog;
       root.addEventListener("change", (event) => void this.#onChange(event));
       root.addEventListener("input", (event) => catalog.onInput(event));
-      root.addEventListener("keydown", (event) => catalog.onKeydown(event));
+      root.addEventListener("keydown", (event) => {
+        if (!handleKeyboardActivation(event)) catalog.onKeydown(event);
+      });
       // Drop-zone highlight, delegated once. Capture phase: the DragDrop drop handler may stop
       // propagation. Moving between a zone's children fires dragleave on the zone, so only clear
       // the highlight when the pointer really left it.
@@ -388,8 +401,32 @@ export class EncounterBuilderApp extends Base {
     if (!sharesCreature) for (const panel of this.#panelList()) panel.onDraftReplaced?.();
   }
 
+  /** Queue a header message (the newest three are kept); the caller renders. */
   pushMessage(level: Message["level"], text: string): void {
-    this.state.messages = [...this.state.messages.slice(-2), { level, text }];
+    const id = this.#nextMessageId++;
+    const kept = this.state.messages.slice(-2);
+    for (const dropped of this.state.messages.slice(0, -2)) this.#clearMessageTimer(dropped.id);
+    this.state.messages = [...kept, { id, level, text }];
+    if (level === "info" || level === "ok") {
+      this.#messageTimers.set(
+        id,
+        setTimeout(() => void this.dismissMessage(id), MESSAGE_TTL_MS),
+      );
+    }
+  }
+
+  /** Remove a header message and repaint the header if it was showing. */
+  async dismissMessage(id: number): Promise<void> {
+    this.#clearMessageTimer(id);
+    const before = this.state.messages.length;
+    this.state.messages = this.state.messages.filter((m) => m.id !== id);
+    if (this.state.messages.length !== before && this.rendered) await this.render({ parts: ["header"] });
+  }
+
+  #clearMessageTimer(id: number): void {
+    const timer = this.#messageTimers.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    this.#messageTimers.delete(id);
   }
 
   /** Queue the generic error message for `error`; the caller renders. */
@@ -534,7 +571,19 @@ export class EncounterBuilderApp extends Base {
     if (GATED_TABS.includes(tab) && !this.ready) return;
     this.activeTab = tab;
     for (const panel of this.#panelList()) panel.onTabShown?.(tab);
+    // Re-rendering the tab strip replaces the focused button; keep keyboard focus on the new tab.
+    const hadFocus = target.closest('[role="tablist"]')?.contains(document.activeElement) ?? false;
     await this.render({ parts: ["tabs", tab] });
+    if (hadFocus) (this.element as HTMLElement).querySelector<HTMLElement>(`#seb-tab-${tab}`)?.focus();
+  }
+
+  static async #onDismissMessage(
+    this: EncounterBuilderApp,
+    _event: Event,
+    target: HTMLElement,
+  ): Promise<void> {
+    const id = Number(target.dataset.id);
+    if (Number.isFinite(id)) await this.dismissMessage(id);
   }
 
   static async #onChangeParty(this: EncounterBuilderApp): Promise<void> {

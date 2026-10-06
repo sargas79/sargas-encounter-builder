@@ -208,6 +208,8 @@ export class EncounterTableEditor extends Base {
     const formula = validateFormula(this.formula);
     return {
       ...base,
+      // Prefix for element ids: several editors (one per table) can be open at once.
+      uid: this.id,
       name: this.model?.name ?? "",
       formula: this.formula,
       formulaRange: formula.ok ? `${formula.min}–${formula.max}` : t("editor.formulaInvalid"),
@@ -227,6 +229,7 @@ export class EncounterTableEditor extends Base {
       rows: this.rows.map((row, index) => ({
         ...row,
         index,
+        rowNumber: index + 1,
         isNative: !row.flags,
         kinds: RESULT_KINDS.map((k) => ({
           value: k,
@@ -245,6 +248,7 @@ export class EncounterTableEditor extends Base {
         creatures: (row.flags?.creatures ?? []).map((c, ci) => ({
           ...c,
           ci,
+          number: ci + 1,
           name: this.#names.get(c.uuid) ?? c.uuid,
           quantityValid: validateFormula(c.quantity).ok,
         })),

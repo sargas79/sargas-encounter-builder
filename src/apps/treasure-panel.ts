@@ -31,6 +31,7 @@ import { TreasureService } from "../foundry/treasure-service.js";
 import { confirm, promptSelect, promptText } from "./dialogs.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
 import { panelActions, type Panel } from "./panel.js";
+import { actorTypeLabel } from "./view-models.js";
 
 export type TreasureMode = "encounter" | "level" | "custom";
 
@@ -390,7 +391,7 @@ export class TreasurePanel implements Panel {
       .sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9) || a.name.localeCompare(b.name));
     const choices = (fromTokens.length ? fromTokens : fallback).map((a) => ({
       uuid: a.uuid,
-      name: `${a.name} (${t(`actorType.${a.type}`)})`,
+      name: `${a.name} (${actorTypeLabel(a.type)})`,
     }));
     if (choices.length === 0) {
       this.app.pushMessage("warn", t("treasure.noActors"));

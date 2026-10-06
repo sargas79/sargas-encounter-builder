@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0
+
+Accessibility, layout and internal restructuring:
+
+- Party, profile and saved-encounter lists work from the keyboard (Tab, then Enter or Space).
+- Tabs follow the standard pattern: arrow keys, Home and End move between them, and screen readers announce
+  each tab and its panel. Form fields, table-editor row inputs and button groups have accessible names.
+- Treasure category chips are keyboard-reachable and show a focus outline.
+- Header messages can be dismissed; info and success messages clear after about 8 seconds.
+- Picking the deploy origin can be cancelled with Escape or a Cancel button, no longer selects tokens, and is
+  cancelled with a warning if the viewed scene changed.
+- The builder window can be made narrower; its layout stacks in small windows.
+- New actor-type labels (vehicle, army, unknown). Journal summaries, ledger labels and module folder and
+  journal names are translatable; existing folders are still found.
+- Internal: the builder window is split into typed panels (Party and Catalog added), dialogs and view models
+  have their own modules, template-callable panel methods are whitelisted, duplicated code and dead handlers
+  are removed, colours are CSS tokens, and tests check template actions and localization keys.
+
 ## 0.3.6
 
 Performance, stability and rules edge cases:

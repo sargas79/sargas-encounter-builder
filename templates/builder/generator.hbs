@@ -41,8 +41,8 @@
   </div>
 
   <div class="seb-field">
-    <label>{{localize "sargas-encounter-builder.generator.archetypeLabel"}}</label>
-    <div class="seb-segments seb-segments-wrap" role="group">
+    <label id="seb-gen-archetype-label">{{localize "sargas-encounter-builder.generator.archetypeLabel"}}</label>
+    <div class="seb-segments seb-segments-wrap" role="group" aria-labelledby="seb-gen-archetype-label">
       {{#each generator.archetypes}}<button type="button" class="seb-segment{{#if this.active}} is-active{{/if}}" data-action="ext" data-ext="generator" data-method="setArchetype" data-value="{{this.value}}" data-tooltip="{{this.hint}}" aria-pressed="{{#if this.active}}true{{else}}false{{/if}}">{{this.label}}</button>{{/each}}
     </div>
   </div>
@@ -58,12 +58,12 @@
 
   {{#if generator.options.showAdvanced}}
   <div class="seb-form-row seb-advanced">
-    <div class="seb-field seb-field-short"><label>{{localize "sargas-encounter-builder.generator.relativeMin"}}</label><input type="number" name="gen.relativeMin" min="-4" max="4" value="{{generator.options.relativeMin}}"></div>
-    <div class="seb-field seb-field-short"><label>{{localize "sargas-encounter-builder.generator.relativeMax"}}</label><input type="number" name="gen.relativeMax" min="-4" max="4" value="{{generator.options.relativeMax}}"></div>
-    <div class="seb-field seb-field-short"><label>{{localize "sargas-encounter-builder.generator.minCount"}}</label><input type="number" name="gen.minCount" min="1" max="40" value="{{generator.options.minCount}}"></div>
-    <div class="seb-field seb-field-short"><label>{{localize "sargas-encounter-builder.generator.maxCount"}}</label><input type="number" name="gen.maxCount" min="1" max="40" value="{{generator.options.maxCount}}"></div>
-    <div class="seb-field seb-field-short"><label>{{localize "sargas-encounter-builder.generator.duplicateCap"}}</label><input type="number" name="gen.duplicateCap" min="1" max="40" value="{{generator.options.duplicateCap}}"></div>
-    <div class="seb-field"><label>{{localize "sargas-encounter-builder.generator.seed"}}</label><input type="text" name="gen.seed" value="{{generator.options.seed}}" placeholder="{{localize 'sargas-encounter-builder.generator.seedPlaceholder'}}"></div>
+    <div class="seb-field seb-field-short"><label for="seb-gen-relativemin">{{localize "sargas-encounter-builder.generator.relativeMin"}}</label><input id="seb-gen-relativemin" type="number" name="gen.relativeMin" min="-4" max="4" value="{{generator.options.relativeMin}}"></div>
+    <div class="seb-field seb-field-short"><label for="seb-gen-relativemax">{{localize "sargas-encounter-builder.generator.relativeMax"}}</label><input id="seb-gen-relativemax" type="number" name="gen.relativeMax" min="-4" max="4" value="{{generator.options.relativeMax}}"></div>
+    <div class="seb-field seb-field-short"><label for="seb-gen-mincount">{{localize "sargas-encounter-builder.generator.minCount"}}</label><input id="seb-gen-mincount" type="number" name="gen.minCount" min="1" max="40" value="{{generator.options.minCount}}"></div>
+    <div class="seb-field seb-field-short"><label for="seb-gen-maxcount">{{localize "sargas-encounter-builder.generator.maxCount"}}</label><input id="seb-gen-maxcount" type="number" name="gen.maxCount" min="1" max="40" value="{{generator.options.maxCount}}"></div>
+    <div class="seb-field seb-field-short"><label for="seb-gen-duplicatecap">{{localize "sargas-encounter-builder.generator.duplicateCap"}}</label><input id="seb-gen-duplicatecap" type="number" name="gen.duplicateCap" min="1" max="40" value="{{generator.options.duplicateCap}}"></div>
+    <div class="seb-field"><label for="seb-gen-seed">{{localize "sargas-encounter-builder.generator.seed"}}</label><input id="seb-gen-seed" type="text" name="gen.seed" value="{{generator.options.seed}}" placeholder="{{localize 'sargas-encounter-builder.generator.seedPlaceholder'}}"></div>
     {{#if generator.isBossMinions}}<label class="seb-checkbox seb-field-wide"><input type="checkbox" name="gen.outsiderBoss" {{#if generator.options.outsiderBoss}}checked{{/if}}> <span>{{localize "sargas-encounter-builder.generator.outsiderBoss"}}</span></label>{{/if}}
     <p class="seb-hint seb-field-wide">{{localize "sargas-encounter-builder.generator.filtersHint"}}{{#if generator.lockedCount}} {{localize "sargas-encounter-builder.generator.lockedHint" count=generator.lockedCount}}{{/if}}</p>
   </div>

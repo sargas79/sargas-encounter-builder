@@ -1,4 +1,4 @@
-<section class="seb-tab" data-tab="party">
+<section class="seb-tab" id="seb-panel-party" role="tabpanel" aria-labelledby="seb-tab-party" data-tab="party">
   <div class="seb-columns seb-columns-narrow-left">
     <aside class="seb-panel">
       <div class="seb-panel-head">
@@ -12,7 +12,7 @@
         {{#if party.partyActors.length}}
         <div class="seb-group-header"><span>{{localize "sargas-encounter-builder.party.partyActors"}}</span><span class="seb-text-dim">{{party.partyActors.length}}</span></div>
         {{#each party.partyActors}}
-        <div class="seb-row seb-row-click" data-action="linkPartyActor" data-uuid="{{this.uuid}}">
+        <div class="seb-row seb-row-click" role="button" tabindex="0" data-action="linkPartyActor" data-uuid="{{this.uuid}}">
           <i class="fa-solid fa-people-group seb-row-icon"></i>
           <div class="seb-row-main"><span class="seb-row-name">{{this.name}}</span><span class="seb-row-meta">{{localize "sargas-encounter-builder.party.partyActorHint"}}</span></div>
           <div class="seb-row-controls"><i class="fa-solid fa-link seb-text-dim"></i></div>
@@ -21,7 +21,7 @@
         {{/if}}
         <div class="seb-group-header"><span>{{localize "sargas-encounter-builder.party.savedProfiles"}}</span><span class="seb-text-dim">{{party.profiles.length}}</span></div>
         {{#each party.profiles}}
-        <div class="seb-row seb-row-click{{#if this.selected}} is-selected{{/if}}" data-action="selectProfile" data-id="{{this.id}}">
+        <div class="seb-row seb-row-click{{#if this.selected}} is-selected{{/if}}" role="button" tabindex="0"{{#if this.selected}} aria-current="true"{{/if}} data-action="selectProfile" data-id="{{this.id}}">
           <i class="fa-solid {{#if (eq this.kind "linked")}}fa-link{{else}}fa-users{{/if}} seb-row-icon"></i>
           <div class="seb-row-main"><span class="seb-row-name">{{this.name}}</span><span class="seb-row-meta">{{this.kindLabel}}{{#unless (eq this.kind "linked")}} · {{localize "sargas-encounter-builder.party.memberCount" count=this.count}}{{/unless}}</span></div>
         </div>
@@ -43,13 +43,13 @@
       {{#if party.showPolicy}}
       <div class="seb-form-row">
         <div class="seb-field">
-          <label>{{localize "sargas-encounter-builder.party.policyLabel"}} <span class="seb-text-dim">({{party.roster.distinctLevels}})</span></label>
-          <select name="referencePolicy">
+          <label for="seb-party-policy">{{localize "sargas-encounter-builder.party.policyLabel"}} <span class="seb-text-dim">({{party.roster.distinctLevels}})</span></label>
+          <select id="seb-party-policy" name="referencePolicy">
             <option value="">{{localize "sargas-encounter-builder.party.policy.choose"}}</option>
             {{#each party.policies}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}
           </select>
         </div>
-        {{#if party.isManual}}<div class="seb-field seb-field-short"><label>{{localize "sargas-encounter-builder.party.manualLevel"}}</label><input type="number" name="manualReferenceLevel" min="1" max="20" value="{{party.manualLevel}}"></div>{{/if}}
+        {{#if party.isManual}}<div class="seb-field seb-field-short"><label for="seb-party-manual-level">{{localize "sargas-encounter-builder.party.manualLevel"}}</label><input type="number" id="seb-party-manual-level" name="manualReferenceLevel" min="1" max="20" value="{{party.manualLevel}}"></div>{{/if}}
       </div>
       {{/if}}
       {{#unless party.isLinked}}

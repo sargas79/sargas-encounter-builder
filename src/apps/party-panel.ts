@@ -6,13 +6,13 @@
 import type { ReferenceLevelPolicy } from "../core/budget.js";
 import type { RosterState } from "../core/party.js";
 import { escapeHtml } from "../core/util.js";
-import { MODULE_ID } from "../constants.js";
 import { isGM } from "../foundry/compat.js";
 import { t } from "../foundry/i18n.js";
 import { services } from "../foundry/services.js";
 import { confirm, promptSelect, promptText } from "./dialogs.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
 import type { Panel } from "./panel.js";
+import { actorTypeLabel } from "./view-models.js";
 
 export class PartyPanel implements Panel {
   constructor(private readonly app: EncounterBuilderApp) {}
@@ -202,8 +202,7 @@ function rosterContext(roster: RosterState): Record<string, unknown> {
       counted: m.status === "counted" || m.status === "overrideCounted",
       canToggleCounts: m.type === "npc" && m.status !== "missing",
       level: m.level ?? "?",
-      typeLabel:
-        t(`actorType.${m.type}`) === `${MODULE_ID}.actorType.${m.type}` ? m.type : t(`actorType.${m.type}`),
+      typeLabel: actorTypeLabel(m.type),
     })),
     partySize: roster.partySize,
     distinctLevels: roster.reference.distinctLevels.join(", "),

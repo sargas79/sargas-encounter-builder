@@ -3,12 +3,13 @@
  * GM-only chat card. Every path re-checks `game.user.isGM` and never touches player-owned documents
  * except the actor the GM explicitly targets.
  */
-import { DOCUMENT_NAMES, FLAGS, MODULE_ID } from "../constants.js";
+import { FLAGS, MODULE_ID } from "../constants.js";
 import { escapeHtml } from "../core/util.js";
 import { formatCoins, formatGp as gp, type Coins, type TreasureResult } from "../core/treasure.js";
 import { documentClass, ownershipLevels } from "./compat.js";
 import { t } from "./i18n.js";
 import type { CoinItems } from "./item-catalog.js";
+import { ensureModuleFolder } from "./module-folders.js";
 
 export interface TreasureOutputOptions {
   name: string;
@@ -116,15 +117,8 @@ export class TreasureService {
     return out;
   }
 
-  async #ensureFolder(): Promise<FolderDocument | null> {
-    const existing = game.folders.find((f) => f.type === "Actor" && f.name === DOCUMENT_NAMES.lootFolder);
-    if (existing) return existing;
-    try {
-      return await documentClass("Folder").create({ name: DOCUMENT_NAMES.lootFolder, type: "Actor" });
-    } catch (error) {
-      console.warn(`${MODULE_ID} | could not create the treasure folder`, error);
-      return null;
-    }
+  #ensureFolder(): Promise<FolderDocument | null> {
+    return ensureModuleFolder("loot");
   }
 
   #assertGM(): void {

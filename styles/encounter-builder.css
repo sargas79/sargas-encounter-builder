@@ -25,9 +25,28 @@
   --seb-accent-bg: rgba(124, 109, 242, 0.14);
   --seb-accent-border: rgba(124, 109, 242, 0.45);
 
+  --seb-accent-bg-strong: rgba(124, 109, 242, 0.24);
+  --seb-accent-glow: rgba(124, 109, 242, 0.45);
+  --seb-on-accent: #fff;
+  --seb-focus-ring: var(--seb-accent);
+  --seb-bg-track: #262735;
+  --seb-shadow: rgb(0 0 0 / 50%);
+
   --seb-danger: #e5484d;
+  --seb-danger-bg: rgba(229, 72, 77, 0.14);
+  --seb-danger-border: rgba(229, 72, 77, 0.6);
+  --seb-danger-glow: rgba(229, 72, 77, 0.4);
   --seb-warn: #e0b64a;
+  --seb-warn-border: rgba(224, 182, 74, 0.35);
+  --seb-warn-glow: rgba(224, 182, 74, 0.4);
   --seb-ok: #4ade80;
+
+  /* Content colours: tags, rarities, treasure categories. */
+  --seb-tag: #8fe0a8;
+  --seb-rarity-uncommon: #e0b64a;
+  --seb-rarity-rare: #6fb1e8;
+  --seb-rarity-unique: #d98ae0;
+  --seb-valuables: #c084fc;
 
   --seb-radius: 6px;
   --seb-radius-sm: 4px;
@@ -50,16 +69,14 @@
 }
 
 .application.seb-builder {
-  min-width: 900px;
+  min-width: min(900px, 100vw - 2rem);
   min-height: 560px;
 }
 
 .seb input:not([type="checkbox"]):not([type="radio"]),
 .seb select,
-.seb textarea,
 .seb-dialog input:not([type="checkbox"]):not([type="radio"]),
-.seb-dialog select,
-.seb-dialog textarea {
+.seb-dialog select {
   background: var(--seb-bg-inset);
   border: 1px solid var(--seb-border);
   border-radius: var(--seb-radius-sm);
@@ -74,9 +91,17 @@
 
 .seb textarea,
 .seb-dialog textarea {
+  background: var(--seb-bg-inset);
+  border: 1px solid var(--seb-border);
+  border-radius: var(--seb-radius-sm);
+  color: var(--seb-text);
+  font-size: 13px;
   height: auto;
   padding: 6px 8px;
   resize: vertical;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .seb input:not([type="checkbox"]):not([type="radio"]):focus,
@@ -106,7 +131,7 @@
 
 .seb *:focus-visible,
 .seb-dialog *:focus-visible {
-  outline: 2px solid var(--seb-accent);
+  outline: 2px solid var(--seb-focus-ring);
   outline-offset: 1px;
 }
 
@@ -329,6 +354,7 @@
 
 .seb-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: 0 14px;
   background: var(--seb-bg);
@@ -400,6 +426,24 @@
 }
 .seb-columns-narrow-left {
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+}
+
+/* Narrow windows: stack the header strip and the two columns, and let the tab scroll instead. */
+.seb .window-content {
+  container: seb-window / inline-size;
+}
+@container seb-window (max-width: 820px) {
+  .seb-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .seb-tab.is-active {
+    overflow-y: auto;
+  }
+  .seb-columns,
+  .seb-columns-narrow-left {
+    grid-template-columns: minmax(0, 1fr);
+    flex: 0 0 auto;
+  }
 }
 
 .seb-panel {
@@ -492,6 +536,10 @@
 .seb-row-click {
   cursor: pointer;
 }
+.seb .seb-row-click:focus-visible {
+  outline: 2px solid var(--seb-focus-ring);
+  outline-offset: -2px;
+}
 .seb-row-icon {
   flex: 0 0 auto;
   width: 16px;
@@ -561,7 +609,7 @@
   align-items: center;
   gap: 4px;
   padding: 3px 6px;
-  background: #262735;
+  background: var(--seb-bg-track);
   border: 1px solid var(--seb-border-soft);
   border-radius: 3px;
   color: var(--seb-text-muted);
@@ -582,20 +630,20 @@
   color: var(--seb-text);
 }
 .seb-pill.is-warn {
-  border-color: rgba(224, 182, 74, 0.35);
+  border-color: var(--seb-warn-border);
   color: var(--seb-warn);
 }
 .seb-pill.is-tag {
-  color: #8fe0a8;
+  color: var(--seb-tag);
 }
 .seb-rarity.is-uncommon {
-  color: #e0b64a;
+  color: var(--seb-rarity-uncommon);
 }
 .seb-rarity.is-rare {
-  color: #6fb1e8;
+  color: var(--seb-rarity-rare);
 }
 .seb-rarity.is-unique {
-  color: #d98ae0;
+  color: var(--seb-rarity-unique);
 }
 
 /* -------------------------------------------------- *
@@ -637,7 +685,7 @@
 }
 .seb .seb-button-primary:hover:not(:disabled),
 .seb-dialog .seb-button-primary:hover:not(:disabled) {
-  background: rgba(124, 109, 242, 0.24);
+  background: var(--seb-accent-bg-strong);
   border-color: var(--seb-accent);
 }
 .seb .seb-button:disabled,
@@ -685,7 +733,7 @@
   color: var(--seb-accent);
 }
 .seb .seb-icon-button.seb-icon-danger:hover:not(:disabled) {
-  background: rgba(229, 72, 77, 0.14);
+  background: var(--seb-danger-bg);
   color: var(--seb-danger);
 }
 .seb .seb-icon-button:disabled {
@@ -836,7 +884,7 @@
   height: 7px;
   width: 3px;
   margin-top: -2px;
-  border: solid #fff;
+  border: solid var(--seb-on-accent);
   border-width: 0 2px 2px 0;
   opacity: 0;
   transform: rotate(45deg);
@@ -895,6 +943,18 @@
 /* Notes rendered directly under the strip get the window gutter. */
 .seb-header > .seb-note {
   margin: 6px 14px 0;
+}
+.seb-message {
+  align-items: center;
+}
+.seb-message-text {
+  flex: 1;
+  min-width: 0;
+}
+.seb .seb-message-dismiss {
+  flex: 0 0 auto;
+  height: 22px;
+  width: 22px;
 }
 
 .seb-empty {
@@ -988,7 +1048,7 @@
   background: var(--seb-bg-raised);
   border: 1px solid var(--seb-border);
   border-radius: var(--seb-radius);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 50%);
+  box-shadow: 0 6px 20px var(--seb-shadow);
 }
 .seb-popover-body .seb-checkbox {
   padding: 3px 0;
@@ -1072,23 +1132,23 @@
   position: relative;
   height: 6px;
   margin: 6px 0 10px;
-  background: #262735;
+  background: var(--seb-bg-track);
   border-radius: 3px;
 }
 .seb-meter-fill {
   height: 100%;
   background: var(--seb-accent);
   border-radius: 3px;
-  box-shadow: 0 0 10px rgba(124, 109, 242, 0.45);
+  box-shadow: 0 0 10px var(--seb-accent-glow);
   transition: width 220ms ease;
 }
 .seb-meter.is-over .seb-meter-fill {
   background: var(--seb-warn);
-  box-shadow: 0 0 10px rgba(224, 182, 74, 0.4);
+  box-shadow: 0 0 10px var(--seb-warn-glow);
 }
 .seb-meter.is-unquantified .seb-meter-fill {
   background: var(--seb-danger);
-  box-shadow: 0 0 10px rgba(229, 72, 77, 0.4);
+  box-shadow: 0 0 10px var(--seb-danger-glow);
 }
 .seb-meter-target {
   position: absolute;
@@ -1312,7 +1372,7 @@
   align-items: start;
 }
 .seb-ed-row.is-invalid {
-  border-color: rgba(229, 72, 77, 0.6);
+  border-color: var(--seb-danger-border);
 }
 .seb-ed-row.is-native {
   opacity: 0.8;
@@ -1397,8 +1457,26 @@ button.sargas-encounter-builder-launch {
 .seb label.seb-chip {
   margin: 0;
 }
-.seb .seb-chip-input {
-  display: none;
+/* Visually hidden but still focusable and announced; the chip shows its state and focus. */
+.seb input[type="checkbox"].seb-chip-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  appearance: none;
+}
+.seb label.seb-chip {
+  position: relative;
+}
+.seb label.seb-chip:has(.seb-chip-input:focus-visible) {
+  outline: 2px solid var(--seb-focus-ring);
+  outline-offset: 1px;
 }
 
 .seb-treasure-meter {
@@ -1422,7 +1500,7 @@ button.sargas-encounter-builder-launch {
 }
 .seb-treasure-fill.is-valuables,
 .seb-swatch.is-valuables {
-  background: #c084fc;
+  background: var(--seb-valuables);
 }
 .seb-treasure-fill.is-coins,
 .seb-swatch.is-coins {
