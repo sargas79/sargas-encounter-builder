@@ -15,7 +15,12 @@ declare global {
     name: string;
     documentName?: string;
     flags: Record<string, any>;
-    _stats?: { compendiumSource?: string | null; duplicateSource?: string | null };
+    _stats?: {
+      compendiumSource?: string | null;
+      duplicateSource?: string | null;
+      /** Creation timestamp (ms). */
+      createdTime?: number | null;
+    };
     pack?: string | null;
     folder?: FolderDocument | null;
     getFlag(scope: string, key: string): any;
@@ -74,6 +79,15 @@ declare global {
     members?: ActorDocument[];
     ownership: Record<string, number>;
     hitPoints?: { value: number; max: number } | null;
+    /** Core: a TokenDocument built from the prototype (resolves random wildcard images). */
+    getTokenDocument?(
+      data?: Record<string, unknown>,
+      options?: Record<string, unknown>,
+    ): Promise<TokenDocument>;
+    /** PF2e: the actor's inventory (physical items). */
+    inventory?: {
+      addCoins?(coins: { pp?: number; gp?: number; sp?: number; cp?: number }): Promise<void>;
+    };
   }
 
   interface TableResultDocument extends FoundryDocument {
@@ -146,7 +160,7 @@ declare global {
   }
 
   interface CombatDocument extends FoundryDocument {
-    combatants: { contents: { initiative?: number | null }[] };
+    combatants: { contents: { initiative?: number | null; uuid?: string; tokenId?: string | null }[] };
     scene: SceneDocument | null;
     started: boolean;
     round: number;

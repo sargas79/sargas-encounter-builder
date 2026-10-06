@@ -7,6 +7,9 @@
  *   dice   := [integer] "d" integer [("kh" | "kl") [integer]]
  *
  * No `@` data references, no function calls, no flavor text, no other modifiers.
+ * Whitespace is allowed between tokens only; it never joins tokens, so "1 2d6" is an error rather
+ * than 12d6. Unary minus ("-1d4", "2*-1") is deliberately unsupported: quantities and encounter
+ * checks are never negative, and keeping every factor non-negative keeps range computation simple.
  * The same grammar is evaluated by Foundry's Roll at runtime; `evaluateFormula` here is for
  * validation, range computation and tests only.
  */
@@ -32,10 +35,14 @@ const MAX_FACES = 1000;
 
 export function tokenizeFormula(formula: string): DiceToken[] {
   const tokens: DiceToken[] = [];
-  const src = formula.replace(/\s+/g, "").toLowerCase();
+  const src = formula.toLowerCase();
   let i = 0;
   while (i < src.length) {
     const ch = src[i]!;
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
     if (ch === "(") {
       tokens.push({ type: "lparen" });
       i++;

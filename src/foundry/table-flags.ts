@@ -70,6 +70,8 @@ export interface TableSave {
   rows: RowEdit[];
   /** Result ids to delete. */
   deleteIds: string[];
+  /** Native (unconfigured) rows: only their range/weight is written, e.g. after "Derive ranges". */
+  nativeRanges?: { id: string; range: [number, number]; weight: number }[];
 }
 
 /** Persist edits. Rows the GM did not touch are not rewritten. */
@@ -100,6 +102,18 @@ export async function saveTable(
       if (!rowChanged(existing, data, row.flags)) continue;
       updates.push({ _id: row.id, ...data });
     } else creates.push(data);
+  }
+  for (const row of save.nativeRanges ?? []) {
+    const existing = table.results.get(row.id);
+    if (!existing) continue;
+    const weight = Math.max(0, Math.floor(row.weight));
+    if (
+      existing.range[0] === row.range[0] &&
+      existing.range[1] === row.range[1] &&
+      existing.weight === weight
+    )
+      continue;
+    updates.push({ _id: row.id, range: row.range, weight });
   }
   if (save.deleteIds.length) await table.deleteEmbeddedDocuments("TableResult", save.deleteIds);
   if (updates.length) await table.updateEmbeddedDocuments("TableResult", updates);

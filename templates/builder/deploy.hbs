@@ -1,4 +1,4 @@
-<section class="seb-tab" data-tab="deploy">
+<section class="seb-tab" id="seb-panel-deploy" role="tabpanel" aria-labelledby="seb-tab-deploy" data-tab="deploy">
   {{#unless ready}}
   <div class="seb-empty seb-gate"><i class="fa-solid fa-lock"></i><p class="seb-empty-title">{{gate.title}}</p><p class="seb-empty-hint">{{gate.hint}}</p></div>
   {{else}}
@@ -24,6 +24,7 @@
       <div class="seb-toolbar">
         <span class="seb-text-dim">{{localize "sargas-encounter-builder.deploy.origin"}}: <strong>{{deploy.origin}}</strong></span>
         <button type="button" class="seb-button seb-button-small" data-action="ext" data-ext="deploy" data-method="pickOrigin" {{#if deploy.pickingOrigin}}disabled{{/if}}><i class="fa-solid fa-crosshairs"></i> {{#if deploy.pickingOrigin}}{{localize "sargas-encounter-builder.deploy.clickCanvas"}}{{else}}{{localize "sargas-encounter-builder.deploy.pickOrigin"}}{{/if}}</button>
+        {{#if deploy.pickingOrigin}}<button type="button" class="seb-button seb-button-small" data-action="ext" data-ext="deploy" data-method="cancelOrigin" data-tooltip="{{localize 'sargas-encounter-builder.deploy.cancelPickHint'}}"><i class="fa-solid fa-ban"></i> {{localize "sargas-encounter-builder.deploy.cancelPick"}}</button>{{/if}}
         <button type="button" class="seb-icon-button" data-action="ext" data-ext="deploy" data-method="clearOrigin" data-tooltip="{{localize 'sargas-encounter-builder.deploy.originCenter'}}" aria-label="{{localize 'sargas-encounter-builder.deploy.originCenter'}}"><i class="fa-solid fa-xmark"></i></button>
       </div>
       {{#each deploy.preview.blockers}}<div class="seb-note is-error">{{this}}</div>{{/each}}
@@ -47,7 +48,7 @@
       <div class="seb-group-header"><span>{{localize "sargas-encounter-builder.deploy.result"}}</span></div>
       <div class="seb-note {{#if deploy.outcome.partial}}is-warn{{else}}is-ok{{/if}}">{{localize "sargas-encounter-builder.deploy.summary" actors=deploy.outcome.summary.created.Actor tokens=deploy.outcome.summary.created.Token combats=deploy.outcome.summary.created.Combat combatants=deploy.outcome.summary.created.Combatant reused=deploy.outcome.summary.reused}}{{#if deploy.outcome.unplaced}} · {{localize "sargas-encounter-builder.deploy.unplaced" count=deploy.outcome.unplaced}}{{/if}}</div>
       {{#each deploy.outcome.failures}}<div class="seb-note is-error">{{this}}</div>{{/each}}
-      {{#if deploy.outcome.cleanupDone}}<div class="seb-note">{{localize "sargas-encounter-builder.deploy.cleanupDone" removed=deploy.outcome.cleanupDone.removed failed=deploy.outcome.cleanupDone.failed}}</div>{{/if}}
+      {{#if deploy.outcome.cleanupDone}}<div class="seb-note">{{localize "sargas-encounter-builder.deploy.cleanupDone" removed=deploy.outcome.cleanupDone.removed failed=deploy.outcome.cleanupDone.failed}}{{#each deploy.outcome.cleanupDone.kept}}<div class="seb-hint">= {{this}}</div>{{/each}}</div>{{/if}}
       <details class="seb-details"><summary>{{localize "sargas-encounter-builder.deploy.ledger"}}</summary><div class="seb-hint">{{#each deploy.outcome.created}}<div>+ {{this}}</div>{{/each}}{{#each deploy.outcome.reused}}<div>= {{this}}</div>{{/each}}</div></details>
       {{#if deploy.outcome.canCleanup}}
       <div class="seb-toolbar"><button type="button" class="seb-button seb-button-small" data-action="ext" data-ext="deploy" data-method="cleanup"><i class="fa-solid fa-broom"></i> {{localize "sargas-encounter-builder.deploy.cleanup"}}</button><span class="seb-hint">{{localize "sargas-encounter-builder.deploy.cleanupHint"}}</span></div>

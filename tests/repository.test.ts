@@ -9,8 +9,14 @@ import {
   snapshotEvaluation,
 } from "../src/core/recipe.js";
 import { migrateRecipeRecord } from "../src/foundry/migrations.js";
-import { EncounterRepository, type RecipeStore } from "../src/foundry/encounter-repository.js";
+import {
+  EncounterRepository,
+  JournalRecipeStore,
+  findSummaryPageId,
+  type RecipeStore,
+} from "../src/foundry/encounter-repository.js";
 import type { Recipe } from "../src/core/schemas.js";
+import { MODULE_ID } from "../src/constants.js";
 
 const g = globalThis as Record<string, unknown>;
 beforeEach(() => {
@@ -233,5 +239,85 @@ describe("T18: saved recipes survive reload and migrations; recalculation does n
     const recipe = recipeFromDraft("Rolled", d, null);
     expect(recipe.policy).toBe("classic");
     expect(recipe.trace).toEqual({ tableUuid: "RollTable.x", trace: [] });
+  });
+});
+
+describe("saved recipe summary page", () => {
+  const flagged = { [MODULE_ID]: { summary: true } };
+
+  it("finds the flagged summary page wherever it is", () => {
+    expect(
+      findSummaryPageId([
+        { id: "notes", name: "Notes", type: "text" },
+        { id: "sum", name: "Renamed", type: "text", flags: flagged },
+      ]),
+    ).toBe("sum");
+  });
+
+  it("falls back to a single legacy 'Summary' text page, and to nothing when ambiguous or missing", () => {
+    expect(
+      findSummaryPageId([
+        { id: "gm", name: "GM notes", type: "text" },
+        { id: "old", name: "Summary", type: "text" },
+      ]),
+    ).toBe("old");
+    expect(findSummaryPageId([{ id: "gm", name: "GM notes", type: "text" }])).toBeNull();
+    expect(findSummaryPageId([{ id: "img", name: "Summary", type: "image" }])).toBeNull();
+    expect(
+      findSummaryPageId([
+        { id: "a", name: "Summary", type: "text" },
+        { id: "b", name: "Summary", type: "text" },
+      ]),
+    ).toBeNull();
+  });
+
+  function fakeJournal(pages: { id: string; name: string; type: string; flags?: Record<string, unknown> }[]) {
+    const calls: { updated: Record<string, unknown>[]; created: Record<string, unknown>[] } = {
+      updated: [],
+      created: [],
+    };
+    const journal = {
+      id: "j1",
+      pages: { contents: pages },
+      update: async () => journal,
+      updateEmbeddedDocuments: async (_type: string, data: Record<string, unknown>[]) => {
+        calls.updated.push(...data);
+        return [];
+      },
+      createEmbeddedDocuments: async (_type: string, data: Record<string, unknown>[]) => {
+        calls.created.push(...data);
+        return [];
+      },
+    };
+    g.game = { user: { isGM: true }, journal: { get: (id: string) => (id === "j1" ? journal : undefined) } };
+    return calls;
+  }
+
+  it("updates the flagged page, never a GM page placed first", async () => {
+    const calls = fakeJournal([
+      { id: "gm", name: "GM notes", type: "text" },
+      { id: "sum", name: "Summary", type: "text", flags: flagged },
+    ]);
+    await new JournalRecipeStore().update("j1", "Ambush", recipeFromDraft("Ambush", draft(), null));
+    expect(calls.updated.map((u) => u._id)).toEqual(["sum"]);
+    expect(String(calls.updated[0]!["text.content"])).toContain("Ash Hound");
+    expect(calls.created).toEqual([]);
+  });
+
+  it("migrates a legacy summary page by flagging it", async () => {
+    const calls = fakeJournal([{ id: "old", name: "Summary", type: "text" }]);
+    await new JournalRecipeStore().update("j1", "Ambush", recipeFromDraft("Ambush", draft(), null));
+    expect(calls.updated).toEqual([
+      expect.objectContaining({ _id: "old", [`flags.${MODULE_ID}.summary`]: true }),
+    ]);
+  });
+
+  it("adds a new flagged summary page instead of overwriting when none is found", async () => {
+    const calls = fakeJournal([{ id: "gm", name: "GM notes", type: "text" }]);
+    await new JournalRecipeStore().update("j1", "Ambush", recipeFromDraft("Ambush", draft(), null));
+    expect(calls.updated).toEqual([]);
+    expect(calls.created).toEqual([
+      expect.objectContaining({ name: "Summary", type: "text", flags: { [MODULE_ID]: { summary: true } } }),
+    ]);
   });
 });

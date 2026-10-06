@@ -14,6 +14,7 @@ import { mulberry32 } from "../src/core/rng.js";
 import { evaluateEncounter } from "../src/core/budget.js";
 import { diffEntries } from "../src/core/variant.js";
 import { generateEncounter } from "../src/core/generator.js";
+import { saveTable } from "../src/foundry/table-flags.js";
 
 /* ------------------------------------------------------------------ */
 
@@ -125,6 +126,21 @@ describe("dice grammar", () => {
     expect(validateFormula("(1d4").ok).toBe(false);
     expect(validateFormula("1d0").ok).toBe(false);
     expect(validateFormula("999d6").ok).toBe(false);
+  });
+
+  it("does not join tokens across whitespace", () => {
+    expect(validateFormula("1 2d6").ok).toBe(false);
+    expect(validateFormula("2 d6").ok).toBe(false);
+    expect(validateFormula("1d 6").ok).toBe(false);
+    expect(validateFormula("1 0").ok).toBe(false);
+    expect(validateFormula(" 2d6 + 1 ")).toEqual({ ok: true, min: 3, max: 13 });
+    expect(validateFormula("( 1d3 + 2 ) * 2")).toEqual({ ok: true, min: 6, max: 10 });
+    expect(evaluateFormula(" 1d4 +\t1 ", () => 0)).toBe(2);
+  });
+
+  it("leaves unary minus unsupported", () => {
+    expect(validateFormula("-1").ok).toBe(false);
+    expect(validateFormula("2*-1").ok).toBe(false);
   });
 
   it("evaluates deterministically with a seeded RNG within bounds", () => {
@@ -517,5 +533,100 @@ describe("review fixes", () => {
     const issues = validateTable(table("RollTable.w0", "1d3", rows, { mode: "weight" }));
     expect(issues.some((i) => i.code === "rangeInvalid")).toBe(false);
     expect(issues.some((i) => i.code === "weightZero" && i.level === "warning")).toBe(true);
+  });
+
+  it("weight mode: a fractional weight below 1 floors to 0 and is warned about", () => {
+    const rows = [
+      row("a", [0, 0], { kind: "none" }, { weight: 2 }),
+      row("half", [0, 0], { kind: "none" }, { weight: 0.5 }),
+      row("ok", [0, 0], { kind: "none" }, { weight: 1.5 }),
+    ];
+    expect(rangesFromWeights(rows).map((r) => r.range)).toEqual([
+      [1, 2],
+      [0, 0],
+      [3, 3],
+    ]);
+    const issues = validateTable(table("RollTable.wf", "1d3", rows, { mode: "weight" }));
+    expect(issues.filter((i) => i.code === "weightZero").map((i) => i.rowId)).toEqual(["half"]);
+  });
+
+  it("range mode: overlap is detected against the widest earlier row, not just the neighbour", () => {
+    const t = table("RollTable.ov", "1d10", [
+      row("wide", [1, 10], { kind: "none" }),
+      row("b", [2, 3], { kind: "none" }),
+      row("c", [5, 6], { kind: "none" }),
+    ]);
+    const issues = validateTable(t);
+    expect(issues.filter((i) => i.code === "rangeGap")).toEqual([]);
+    expect(issues.filter((i) => i.code === "rangeOverlap").map((i) => [i.rowId, i.data?.with])).toEqual([
+      ["b", "wide"],
+      ["c", "wide"],
+    ]);
+  });
+
+  it("range mode: gaps are measured from the furthest end seen so far", () => {
+    const t = table("RollTable.gp", "1d10", [
+      row("a", [1, 6], { kind: "none" }),
+      row("b", [2, 3], { kind: "none" }),
+      row("c", [9, 10], { kind: "none" }),
+    ]);
+    const gaps = validateTable(t).filter((i) => i.code === "rangeGap");
+    expect(gaps).toEqual([expect.objectContaining({ rowId: "c", data: { from: 7, to: 8 } })]);
+  });
+
+  it("range mode: a trailing gap uses the furthest end, not the last row's end", () => {
+    const t = table("RollTable.tg", "1d10", [
+      row("a", [1, 10], { kind: "none" }),
+      row("b", [2, 3], { kind: "none" }),
+    ]);
+    const issues = validateTable(t);
+    expect(issues.some((i) => i.code === "rangeGap")).toBe(false);
+  });
+});
+
+describe("saving a table writes derived ranges to native rows", () => {
+  it("updates only range/weight of native rows whose range changed", async () => {
+    (globalThis as Record<string, unknown>).game = { user: { isGM: true } };
+    const native = (id: string, range: [number, number], weight = 1) => ({
+      id,
+      range,
+      weight,
+      description: id,
+      getFlag: () => undefined,
+    });
+    const results = new Map([
+      ["a", native("a", [1, 1])],
+      ["b", native("b", [2, 2])],
+    ]);
+    const updates: Record<string, unknown>[] = [];
+    const table = {
+      formula: "1d2",
+      results: { get: (id: string) => results.get(id) },
+      getFlag: () => emptyTableFlags(),
+      update: async () => table,
+      updateEmbeddedDocuments: async (_type: string, data: Record<string, unknown>[]) => {
+        updates.push(...data);
+        return [];
+      },
+      createEmbeddedDocuments: async () => [],
+      deleteEmbeddedDocuments: async () => [],
+    };
+    await saveTable(
+      table as unknown as RollTableDocument,
+      {
+        formula: "1d2",
+        flags: emptyTableFlags(),
+        rows: [],
+        deleteIds: [],
+        nativeRanges: [
+          { id: "a", range: [1, 1], weight: 1 },
+          { id: "b", range: [2, 3], weight: 2 },
+          { id: "gone", range: [4, 4], weight: 1 },
+        ],
+      },
+      () => null,
+    );
+    // Unchanged and missing rows are skipped; no module flags or text are written to the native row.
+    expect(updates).toEqual([{ _id: "b", range: [2, 3], weight: 2 }]);
   });
 });

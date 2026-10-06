@@ -2,10 +2,12 @@
  * EncounterRepository: saved encounter recipes as JournalEntry documents in a module folder,
  * GM-private by default, with data in a versioned flag.
  */
-import { DOCUMENT_NAMES, FLAGS, MODULE_ID } from "../constants.js";
+import { FLAGS, MODULE_ID } from "../constants.js";
 import { validateRecipe, type Recipe } from "../core/schemas.js";
 import { documentClass, ownershipLevels } from "./compat.js";
 import { escapeHtml as escape } from "../core/util.js";
+import { t } from "./i18n.js";
+import { ensureModuleFolder, localizedDocumentName } from "./module-folders.js";
 
 export interface RecipeRecord {
   id: string;
@@ -80,14 +82,14 @@ export class JournalRecipeStore implements RecipeStore {
   }
 
   async create(name: string, recipe: Recipe): Promise<{ id: string; uuid: string }> {
-    const folder = await this.#ensureFolder();
+    const folder = await ensureModuleFolder("recipes");
     const levels = ownershipLevels();
     const journal: JournalEntryDocument = await documentClass("JournalEntry").create({
       name,
       folder: folder?.id ?? null,
       ownership: { default: levels.NONE },
       flags: { [MODULE_ID]: { [FLAGS.recipe]: recipe } },
-      pages: [{ name: "Summary", type: "text", text: { content: summaryHtml(recipe), format: 1 } }],
+      pages: [summaryPageData(recipe)],
     });
     return { id: journal.id, uuid: journal.uuid };
   }
@@ -101,41 +103,90 @@ export class JournalRecipeStore implements RecipeStore {
       [`flags.${MODULE_ID}.-=${FLAGS.recipe}`]: null,
       [`flags.${MODULE_ID}.${FLAGS.recipe}`]: recipe,
     });
-    const page = journal.pages.contents[0];
-    if (page)
+    const pageId = findSummaryPageId(journal.pages.contents);
+    if (pageId)
       await journal.updateEmbeddedDocuments("JournalEntryPage", [
-        { _id: page.id, "text.content": summaryHtml(recipe) },
+        { _id: pageId, "text.content": summaryHtml(recipe), [`flags.${MODULE_ID}.${FLAGS.summary}`]: true },
       ]);
+    // Never overwrite a page the GM wrote: add a fresh managed summary page instead.
+    else await journal.createEmbeddedDocuments("JournalEntryPage", [summaryPageData(recipe)]);
   }
 
   async delete(id: string): Promise<void> {
     const journal = game.journal.get(id);
     if (journal) await journal.delete();
   }
+}
 
-  async #ensureFolder(): Promise<FolderDocument | null> {
-    const existing = game.folders.find(
-      (f) => f.type === "JournalEntry" && f.name === DOCUMENT_NAMES.recipeFolder,
-    );
-    if (existing) return existing;
-    try {
-      return await documentClass("Folder").create({
-        name: DOCUMENT_NAMES.recipeFolder,
-        type: "JournalEntry",
-      });
-    } catch {
-      return null;
-    }
-  }
+/** Minimal view of a JournalEntryPage for finding the managed summary page. */
+export interface SummaryPageCandidate {
+  id: string;
+  name: string;
+  type: string;
+  flags?: Record<string, Record<string, unknown> | undefined>;
+}
+
+/** Name of the summary page that versions before the summary flag gave it (always English). */
+const LEGACY_SUMMARY_PAGE_NAME = "Summary";
+
+/**
+ * The page holding the module-managed summary: the page flagged as such, or, for entries saved before the
+ * flag existed, the single text page named "Summary" the module created. Null when neither is found
+ * (e.g. the GM deleted or renamed it), so the caller adds a new page instead of overwriting the GM's.
+ */
+export function findSummaryPageId(pages: readonly SummaryPageCandidate[]): string | null {
+  const flagged = pages.find((p) => p.flags?.[MODULE_ID]?.[FLAGS.summary] === true);
+  if (flagged) return flagged.id;
+  const legacy = pages.filter((p) => p.name === LEGACY_SUMMARY_PAGE_NAME && p.type === "text");
+  return legacy.length === 1 ? legacy[0]!.id : null;
+}
+
+function summaryPageData(recipe: Recipe): Record<string, unknown> {
+  return {
+    name: localizedDocumentName("journal.summaryPage", LEGACY_SUMMARY_PAGE_NAME),
+    type: "text",
+    text: { content: summaryHtml(recipe), format: 1 },
+    flags: { [MODULE_ID]: { [FLAGS.summary]: true } },
+  };
+}
+
+/** Localized text with an English fallback for when no translation is loaded (tests, early hooks). */
+function text(key: string, fallback: string, data: Record<string, unknown> = {}): string {
+  const out = t(key, data);
+  if (out && out !== `${MODULE_ID}.${key}`) return out;
+  return fallback.replace(/\{(\w+)\}/g, (_m, k: string) => String(data[k] ?? ""));
 }
 
 function summaryHtml(recipe: Recipe): string {
   const rows = recipe.entries
-    .map((e) => `<li>${escape(e.name)} (level ${e.level}) × ${e.quantity}</li>`)
+    .map(
+      (e) =>
+        `<li>${text("journal.summaryEntry", "{name} (level {level}) × {quantity}", {
+          name: escape(e.name),
+          level: e.level,
+          quantity: e.quantity,
+        })}</li>`,
+    )
     .join("");
   const ev = recipe.evaluation;
   const evText = ev
-    ? `<p>Saved evaluation: ${escape(ev.partyName)} (${ev.partySize} × level ${ev.referenceLevel}), ${ev.supportedXP} XP, inferred ${escape(ev.inferredLabel)}${ev.complete ? "" : " (incomplete)"}.</p>`
+    ? `<p>${text(
+        ev.complete ? "journal.summaryEvaluation" : "journal.summaryEvaluationIncomplete",
+        ev.complete
+          ? "Saved evaluation: {party} ({size} × level {level}), {xp} XP, inferred {threat}."
+          : "Saved evaluation: {party} ({size} × level {level}), {xp} XP, inferred {threat} (incomplete).",
+        {
+          party: escape(ev.partyName),
+          size: ev.partySize,
+          level: ev.referenceLevel,
+          xp: ev.supportedXP,
+          threat: escape(ev.inferredLabel),
+        },
+      )}</p>`
     : "";
-  return `<p><em>Managed by PF2e Encounter Builder. Edit it from the Encounter Builder's Saved tab.</em></p><ul>${rows}</ul>${evText}${recipe.notes ? `<p>${escape(recipe.notes)}</p>` : ""}`;
+  const managed = text(
+    "journal.summaryManaged",
+    "Managed by PF2e Encounter Builder. Edit it from the Encounter Builder's Saved tab.",
+  );
+  return `<p><em>${escape(managed)}</em></p><ul>${rows}</ul>${evText}${recipe.notes ? `<p>${escape(recipe.notes)}</p>` : ""}`;
 }

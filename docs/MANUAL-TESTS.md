@@ -85,6 +85,25 @@ Run the **deployment** batch a second time logged in as a **player**: T22 must r
 | M49 | Treasure          | Save the encounter, reopen it                                        | Treasure restored with its seed and rows; missing compendium items reported, not silently dropped                                                                           |        |
 | M50 | Treasure          | Uncheck "Allow uncommon", exclude Weapons                            | No uncommon items, no weapons in the result                                                                                                                                 |        |
 
+## B3. 0.3.5–0.4.0 review fixes (need a live Foundry session)
+
+- Deploy with "new combat", add a PC to that combat, Cleanup: confirm dialog appears; the combat and the PC
+  combatant are kept, only deployed combatants are removed. Drag an extra copy of an imported actor onto the
+  scene, Cleanup: that actor is kept and listed.
+- Deploy on a hex scene: blocked. On a gridless scene: deploys with a warning.
+- Actor with a wildcard token image (`randomImg`): deployed tokens get real images.
+- Treasure "add to actor" on a PC that already has gold: coins are added to the existing stacks.
+- Saved encounter with an extra GM journal page placed first: updating rewrites only the Summary page.
+- Table editor: candidates field keeps UUIDs after save; "Derive ranges" on a mixed native/configured table
+  saves without overlaps; closing with edits asks first; reopening keeps edits.
+- During combat with the builder open and a seed typed (not blurred), damage an NPC: the field keeps its text.
+- Two GM tabs: tag a creature in each; both tags survive.
+- Keyboard: Tab to party/saved rows and press Enter; arrow keys across tabs; Tab to treasure chips.
+- Deploy origin pick: Escape and Cancel stop it; the picking click does not select a token; switching scene
+  mid-pick cancels with a warning.
+- Info messages clear after ~8 s; warnings stay until dismissed. Narrow the window below 820 px: layout stacks.
+- Quench batches appear even if a migration fails.
+
 ## C. Review items (T24)
 
 - `git grep -i` for Paizo proper nouns in `src/`, `lang/`, `docs/`, `tests/`: none expected.

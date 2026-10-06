@@ -3,11 +3,13 @@
  * GM-only chat card. Every path re-checks `game.user.isGM` and never touches player-owned documents
  * except the actor the GM explicitly targets.
  */
-import { DOCUMENT_NAMES, FLAGS, MODULE_ID } from "../constants.js";
+import { FLAGS, MODULE_ID } from "../constants.js";
 import { escapeHtml } from "../core/util.js";
 import { formatCoins, formatGp as gp, type Coins, type TreasureResult } from "../core/treasure.js";
 import { documentClass, ownershipLevels } from "./compat.js";
+import { t } from "./i18n.js";
 import type { CoinItems } from "./item-catalog.js";
+import { ensureModuleFolder } from "./module-folders.js";
 
 export interface TreasureOutputOptions {
   name: string;
@@ -40,13 +42,25 @@ export class TreasureService {
     return actor;
   }
 
-  /** Add every item and the coins to an existing actor the GM points at. */
+  /**
+   * Add every item and the coins to an existing actor the GM points at. Coins go through PF2e's
+   * `actor.inventory.addCoins` when available, so they merge into the actor's existing coin stacks;
+   * otherwise coin items are created like any other item. Returns the number of item stacks added
+   * (each coin denomination counts as one).
+   */
   async addToActor(result: TreasureResult, actor: ActorDocument, coinItems: CoinItems): Promise<number> {
     this.#assertGM();
-    const items = await this.#itemData(result, coinItems);
-    if (items.length === 0) return 0;
-    const created = await actor.createEmbeddedDocuments("Item", items);
-    return created.length;
+    const addCoins = actor.inventory?.addCoins;
+    const coins = positiveCoins(result.coins);
+    const useAddCoins = typeof addCoins === "function" && Object.keys(coins).length > 0;
+    const items = await this.#itemData(result, coinItems, { coins: !useAddCoins });
+    let count = 0;
+    if (items.length > 0) count += (await actor.createEmbeddedDocuments("Item", items)).length;
+    if (useAddCoins) {
+      await addCoins.call(actor.inventory, coins);
+      count += Object.keys(coins).length;
+    }
+    return count;
   }
 
   /** Whisper a summary card to every GM. */
@@ -57,19 +71,24 @@ export class TreasureService {
     await ChatMessageClass.create({
       content: treasureCardHtml(result, title),
       whisper: gmIds,
-      speaker: ChatMessageClass.getSpeaker?.({ alias: "Encounter Builder" }) ?? {
-        alias: "Encounter Builder",
+      speaker: ChatMessageClass.getSpeaker?.({ alias: t("treasure.card.speaker") }) ?? {
+        alias: t("treasure.card.speaker"),
       },
       flags: { [MODULE_ID]: { [FLAGS.treasure]: { seed: result.seed } } },
     });
   }
 
-  async #itemData(result: TreasureResult, coinItems: CoinItems): Promise<Record<string, unknown>[]> {
+  async #itemData(
+    result: TreasureResult,
+    coinItems: CoinItems,
+    options: { coins: boolean } = { coins: true },
+  ): Promise<Record<string, unknown>[]> {
     const wanted: { uuid: string; quantity: number | null }[] = result.entries.map((e) => ({
       uuid: e.uuid,
       quantity: null,
     }));
-    for (const [key, quantity] of Object.entries(result.coins) as [keyof Coins, number][]) {
+    const coinEntries = options.coins ? (Object.entries(result.coins) as [keyof Coins, number][]) : [];
+    for (const [key, quantity] of coinEntries) {
       if (quantity <= 0) continue;
       const uuid = coinItems[key];
       if (!uuid) {
@@ -98,15 +117,8 @@ export class TreasureService {
     return out;
   }
 
-  async #ensureFolder(): Promise<FolderDocument | null> {
-    const existing = game.folders.find((f) => f.type === "Actor" && f.name === DOCUMENT_NAMES.lootFolder);
-    if (existing) return existing;
-    try {
-      return await documentClass("Folder").create({ name: DOCUMENT_NAMES.lootFolder, type: "Actor" });
-    } catch (error) {
-      console.warn(`${MODULE_ID} | could not create the treasure folder`, error);
-      return null;
-    }
+  #ensureFolder(): Promise<FolderDocument | null> {
+    return ensureModuleFolder("loot");
   }
 
   #assertGM(): void {
@@ -114,20 +126,40 @@ export class TreasureService {
   }
 }
 
+/** Only the denominations with a positive amount, for `inventory.addCoins`. */
+function positiveCoins(coins: Coins): Partial<Coins> {
+  const out: Partial<Coins> = {};
+  for (const [key, quantity] of Object.entries(coins) as [keyof Coins, number][])
+    if (quantity > 0) out[key] = quantity;
+  return out;
+}
+
 export function treasureCardHtml(result: TreasureResult, title: string): string {
   const rows = result.entries
     .map(
       (e) =>
-        `<li>@UUID[${e.uuid}]{${escapeHtml(e.name)}} <span style="opacity:.7">(level ${e.level}, ${formatGp(e.price)})</span></li>`,
+        `<li>@UUID[${e.uuid}]{${escapeHtml(e.name)}} <span style="opacity:.7">(${escapeHtml(
+          t("treasure.card.itemDetail", { level: e.level, price: formatGp(e.price) }),
+        )})</span></li>`,
     )
     .join("");
   const b = result.budget;
+  const budgetLine = t("treasure.card.budget", {
+    level: b.level,
+    partySize: b.partySize,
+    percent: Math.round(b.share * 100),
+    total: formatGp(b.totalValue),
+  });
+  const totals = t("treasure.card.totals", {
+    items: formatGp(result.itemsValue),
+    currency: formatGp(result.currencyValue),
+  });
   return [
     `<div class="seb-chat-card"><h3>${escapeHtml(title)}</h3>`,
-    `<p style="opacity:.8">Level ${b.level}, party of ${b.partySize}, ${Math.round(b.share * 100)}% of a level: ${formatGp(b.totalValue)} budget.</p>`,
-    rows ? `<ul>${rows}</ul>` : "<p><em>No items.</em></p>",
-    `<p><strong>Coins:</strong> ${escapeHtml(formatCoins(result.coins))}</p>`,
-    `<p style="opacity:.7">Items ${formatGp(result.itemsValue)} · currency ${formatGp(result.currencyValue)}</p></div>`,
+    `<p style="opacity:.8">${escapeHtml(budgetLine)}</p>`,
+    rows ? `<ul>${rows}</ul>` : `<p><em>${escapeHtml(t("treasure.card.noItems"))}</em></p>`,
+    `<p><strong>${escapeHtml(t("treasure.card.coins"))}</strong> ${escapeHtml(formatCoins(result.coins))}</p>`,
+    `<p style="opacity:.7">${escapeHtml(totals)}</p></div>`,
   ].join("");
 }
 

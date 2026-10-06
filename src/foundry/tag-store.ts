@@ -2,9 +2,9 @@
  * Custom creature tags, stored as a versioned flag on the single module data JournalEntry.
  * GM-only ownership; players never see it.
  */
-import { DOCUMENT_NAMES, FLAGS, MODULE_ID } from "../constants.js";
+import { FLAGS, MODULE_ID } from "../constants.js";
 import { emptyTagStore, validateTagStore, type TagStore } from "../core/schemas.js";
-import { documentClass, ownershipLevels } from "./compat.js";
+import { ensureDataJournal, findDataJournal } from "./data-journal.js";
 
 export class TagStoreService {
   #cache: TagStore | null = null;
@@ -23,27 +23,19 @@ export class TagStoreService {
 
   load(): TagStore {
     if (this.#cache) return this.#cache;
-    const journal = this.#findJournal();
-    const raw = journal?.getFlag(MODULE_ID, FLAGS.tags);
-    if (raw) {
-      const v = validateTagStore(raw);
-      if (v.ok) {
-        this.#setCache(v.value);
-        return v.value;
-      }
-      console.warn(`${MODULE_ID} | Tag store invalid, starting empty`, v.errors);
-    }
-    this.#setCache(emptyTagStore());
-    return this.#cache!;
+    const store = parseTagStore(findDataJournal()?.getFlag(MODULE_ID, FLAGS.tags));
+    this.#setCache(store);
+    return store;
   }
 
   async setTags(uuid: string, tags: string[]): Promise<void> {
     if (!game.user.isGM) throw new Error("GM only");
-    const store = structuredClone(this.load());
+    const journal = await ensureDataJournal();
+    // Start from the document, not the cache: another GM or tab may have written since we loaded.
+    const store = structuredClone(parseTagStore(journal.getFlag(MODULE_ID, FLAGS.tags)));
     // Arrays are replaced wholesale by setFlag, so removals persist (object keys would be merged).
     store.entries = store.entries.filter((e) => e.uuid !== uuid);
     if (tags.length) store.entries.push({ uuid, tags: [...new Set(tags)].sort() });
-    const journal = await this.#ensureJournal();
     // Atomic wholesale replacement (also drops any legacy keys left in the flag).
     await journal.update({
       [`flags.${MODULE_ID}.-=${FLAGS.tags}`]: null,
@@ -61,19 +53,13 @@ export class TagStoreService {
     this.#cache = store;
     this.#byUuid = new Map(store.entries.map((e) => [e.uuid, e.tags]));
   }
+}
 
-  #findJournal(): JournalEntryDocument | null {
-    return game.journal.find((j) => j.getFlag(MODULE_ID, FLAGS.dataJournal) === true) ?? null;
+function parseTagStore(raw: unknown): TagStore {
+  if (raw) {
+    const v = validateTagStore(raw);
+    if (v.ok) return v.value;
+    console.warn(`${MODULE_ID} | Tag store invalid, starting empty`, v.errors);
   }
-
-  async #ensureJournal(): Promise<JournalEntryDocument> {
-    const existing = this.#findJournal();
-    if (existing) return existing;
-    const levels = ownershipLevels();
-    return documentClass("JournalEntry").create({
-      name: DOCUMENT_NAMES.dataJournal,
-      ownership: { default: levels.NONE },
-      flags: { [MODULE_ID]: { [FLAGS.dataJournal]: true, [FLAGS.tags]: emptyTagStore() } },
-    });
-  }
+  return emptyTagStore();
 }

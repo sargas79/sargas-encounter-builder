@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { compositionSatisfied, generateEncounter, hardConstraintViolations } from "../src/core/generator.js";
 import { mulberry32 } from "../src/core/rng.js";
 import {
+  archetypeConstraints,
+  archetypeCountRange,
   availableThemes,
   generateThemedEncounter,
   type ThemedCandidate,
@@ -471,5 +473,145 @@ describe("review fixes (0.2.0)", () => {
     const pool = themePool(theme, bestiary());
     expect(pool.every((p) => p.traits.includes("fey") || p.traits.includes("animal"))).toBe(true);
     expect(pool.length).toBeGreaterThan(0);
+  });
+});
+
+describe("themed generation keeps the best fit instead of the first success", () => {
+  const party = { threat: "moderate" as const, partySize: 4, referenceLevel: 5 };
+
+  it("pack: tries other stat blocks when the first one only gives a near fit", () => {
+    // -3 (15 XP) packs top out at 75 XP (near); -2 (20 XP) x4 is exactly 80.
+    const candidates = [c("near", 2, ["animal"]), c("exact", 3, ["animal"])];
+    for (let seed = 1; seed <= 40; seed++) {
+      const result = generateThemedEncounter({
+        ...party,
+        candidates,
+        theme: "auto:animal",
+        archetype: "pack",
+        rng: mulberry32(seed),
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.fit).toBe("exact");
+      expect(result.entries.map((e) => e.uuid)).toEqual(["exact"]);
+    }
+  });
+
+  it("auto mode moves on from an under-budget theme to one with an exact fit", () => {
+    const candidates = [
+      c("u1", 1, ["undead"]),
+      c("u2", 1, ["undead"]),
+      c("a1", 7, ["animal"]),
+      c("a2", 7, ["animal"]),
+    ];
+    for (let seed = 1; seed <= 40; seed++) {
+      const result = generateThemedEncounter({
+        ...party,
+        candidates,
+        theme: "auto",
+        archetype: "any",
+        maxCount: 2,
+        rng: mulberry32(seed),
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.fit).toBe("exact");
+      expect(result.theme.id).toBe("auto:animal");
+      expect(result.themesTried.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("returns the closest non-exact result when nothing fits exactly", () => {
+    // Only under-budget options: the result is the closest one, not whichever came first.
+    const candidates = [
+      c("u1", 1, ["undead"]),
+      c("u2", 1, ["undead"]),
+      c("a1", 2, ["animal"]),
+      c("a2", 2, ["animal"]),
+    ];
+    for (let seed = 1; seed <= 20; seed++) {
+      const result = generateThemedEncounter({
+        ...party,
+        candidates,
+        theme: "auto",
+        archetype: "any",
+        maxCount: 2,
+        duplicateCap: 1,
+        rng: mulberry32(seed),
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.totalXP).toBe(30);
+    }
+  });
+
+  it("boss with minions: an outsider boss beats an under-budget in-theme result, never loosening the theme", () => {
+    const candidates = [c("u-boss", 3, ["undead"]), c("u-min", 1, ["undead"]), c("outsider", 6, ["animal"])];
+    for (let seed = 1; seed <= 20; seed++) {
+      const result = generateThemedEncounter({
+        ...party,
+        candidates,
+        theme: "auto:undead",
+        archetype: "bossMinions",
+        duplicateCap: 2,
+        rng: mulberry32(seed),
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.fit).toBe("exact");
+      expect(result.outsider?.uuid).toBe("outsider");
+      // Everything except the outsider boss stays in the theme.
+      for (const e of result.entries) if (e.uuid !== "outsider") expect(e.traits).toContain("undead");
+    }
+    // With the relaxation off, the in-theme under-budget result is returned as-is.
+    const strict = generateThemedEncounter({
+      ...party,
+      candidates,
+      theme: "auto:undead",
+      archetype: "bossMinions",
+      duplicateCap: 2,
+      outsiderBoss: false,
+      rng: mulberry32(1),
+    });
+    expect(strict.ok).toBe(true);
+    if (strict.ok) {
+      expect(strict.fit).toBe("under");
+      expect(strict.outsider).toBeNull();
+    }
+  });
+});
+
+describe("lair archetype respects its solo count range", () => {
+  it("clamps a user minimum above 1 into the archetype's range instead of failing", () => {
+    const candidates = [c("drake", 7, ["dragon"]), c("drake-2", 6, ["dragon"])];
+    for (const minCount of [1, 2, 3]) {
+      const result = generateThemedEncounter({
+        threat: "moderate",
+        partySize: 4,
+        referenceLevel: 5,
+        candidates,
+        theme: "auto:dragon",
+        archetype: "lair",
+        minCount,
+        maxCount: 6,
+        rng: mulberry32(minCount),
+      });
+      expect(result.ok, `minCount ${minCount}`).toBe(true);
+      if (!result.ok) continue;
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0]!.quantity).toBe(1);
+    }
+  });
+
+  it("archetypeCountRange: solo wins, other compositions keep the archetype minimum", () => {
+    expect(archetypeCountRange(archetypeConstraints("lair", 8), 3, 8)).toEqual({ minCount: 1, maxCount: 1 });
+    expect(archetypeCountRange(archetypeConstraints("lair", 8), undefined, 8)).toEqual({
+      minCount: 1,
+      maxCount: 1,
+    });
+    expect(archetypeCountRange(archetypeConstraints("warband", 8), 1, 8)).toEqual({
+      minCount: 3,
+      maxCount: 6,
+    });
+    expect(archetypeCountRange(archetypeConstraints("any", 2), 4, 2)).toEqual({ minCount: 4, maxCount: 4 });
   });
 });

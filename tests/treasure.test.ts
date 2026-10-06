@@ -1,8 +1,9 @@
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { TREASURE_BY_LEVEL } from "../src/rules/treasure-tables.js";
 import { coinKey, priceInGp, toCandidate } from "../src/foundry/item-catalog.js";
 import { validateRecipe } from "../src/core/schemas.js";
+import { TreasureService, treasureCardHtml } from "../src/foundry/treasure-service.js";
 import { mulberry32 } from "../src/core/rng.js";
 import {
   DEFAULT_TREASURE_OPTIONS,
@@ -147,6 +148,21 @@ describe("treasure generation", () => {
     const r = generateTreasure({ budget, candidates: only, options: options(), rng: mulberry32(1) });
     expect(r.entries.filter((e) => e.kind === "permanent").every((e) => e.level === 4)).toBe(true);
     expect(r.trace.some((line) => line.includes("relaxed to level 4"))).toBe(true);
+  });
+
+  it("relaxes low-level slots down to level-0 items", () => {
+    const budget = treasureBudget({ level: 1, partySize: 4, share: 1 });
+    expect(budget.level).toBe(1);
+    const zero = [
+      ...Array.from({ length: 6 }, (_, i) => candidate(`perm0-${i}`, 0, 1)),
+      ...Array.from({ length: 6 }, (_, i) => candidate(`cons0-${i}`, 0, 1, "consumable")),
+    ];
+    const r = generateTreasure({ budget, candidates: zero, options: options(), rng: mulberry32(3) });
+    expect(r.entries.length).toBeGreaterThan(0);
+    expect(r.entries.every((e) => e.level === 0)).toBe(true);
+    expect(r.trace.some((line) => line.includes("relaxed to level 0"))).toBe(true);
+    // The budget row lookup itself still starts at level 1.
+    expect(treasureBudget({ level: 0, partySize: 4, share: 1 }).level).toBe(1);
   });
 
   it("respects rarity options and excluded categories", () => {
@@ -333,5 +349,73 @@ describe("coins", () => {
     expect(toCoins(140000)).toEqual({ pp: 14000, gp: 0, sp: 0, cp: 0 });
     expect(formatCoins(toCoins(0))).toBe("0 gp");
     expect(formatCoins({ pp: 1, gp: 2, sp: 0, cp: 5 })).toBe("1 pp, 2 gp, 5 cp");
+  });
+});
+
+describe("treasure service: adding to an actor", () => {
+  const g = globalThis as Record<string, unknown>;
+  afterEach(() => {
+    delete g.game;
+    delete g.fromUuid;
+  });
+
+  function setup() {
+    g.game = { user: { isGM: true } };
+    g.fromUuid = async (uuid: string) => ({ toObject: () => ({ _id: "x", name: uuid, system: {} }) });
+    const budget = treasureBudget({ level: 3, partySize: 4, share: 1 });
+    const result = {
+      ...generateTreasure({ budget, candidates: [], options: options(), rng: mulberry32(1) }),
+      entries: [
+        {
+          ...generateTreasure({ budget, candidates: pool(), options: options(), rng: mulberry32(2) })
+            .entries[0]!,
+        },
+      ],
+      coins: { pp: 0, gp: 12, sp: 3, cp: 0 },
+    };
+    const created: Record<string, unknown>[] = [];
+    const actor = {
+      createEmbeddedDocuments: async (_name: string, data: Record<string, unknown>[]) => {
+        created.push(...data);
+        return data;
+      },
+    } as unknown as ActorDocument & { inventory?: unknown };
+    const coinItems = { pp: "C.pp", gp: "C.gp", sp: "C.sp", cp: "C.cp" };
+    return { result, actor, created, coinItems };
+  }
+
+  it("adds coins through PF2e inventory.addCoins when available, merging with existing coins", async () => {
+    const { result, actor, created, coinItems } = setup();
+    const added: unknown[] = [];
+    actor.inventory = { addCoins: async (coins: unknown) => void added.push(coins) };
+    const count = await new TreasureService().addToActor(result, actor, coinItems);
+    expect(added).toEqual([{ gp: 12, sp: 3 }]);
+    expect(created.map((d) => d.name)).toEqual([result.entries[0]!.uuid]);
+    expect(count).toBe(3);
+  });
+
+  it("falls back to creating coin items without inventory.addCoins", async () => {
+    const { result, actor, created, coinItems } = setup();
+    const count = await new TreasureService().addToActor(result, actor, coinItems);
+    expect(created.map((d) => d.name)).toEqual([result.entries[0]!.uuid, "C.gp", "C.sp"]);
+    expect(created.slice(1).map((d) => (d.system as { quantity: number }).quantity)).toEqual([12, 3]);
+    expect(count).toBe(3);
+  });
+
+  it("localizes the GM chat card", () => {
+    g.game = {
+      i18n: {
+        localize: (key: string) => `L:${key.split(".").pop()}`,
+        format: (key: string) => `F:${key.split(".").pop()}`,
+      },
+    };
+    const budget = treasureBudget({ level: 3, partySize: 4, share: 1 });
+    const result = generateTreasure({ budget, candidates: [], options: options(), rng: mulberry32(1) });
+    const html = treasureCardHtml(result, "Hoard");
+    expect(html).toContain("F:budget");
+    expect(html).toContain("L:noItems");
+    expect(html).toContain("L:coins");
+    expect(html).toContain("F:totals");
+    expect(html).not.toMatch(/party of|No items|Coins:/);
   });
 });

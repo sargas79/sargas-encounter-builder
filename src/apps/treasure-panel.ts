@@ -28,9 +28,10 @@ import { isGM } from "../foundry/compat.js";
 import { t } from "../foundry/i18n.js";
 import { services } from "../foundry/services.js";
 import { TreasureService } from "../foundry/treasure-service.js";
+import { confirm, promptSelect, promptText } from "./dialogs.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
-import { confirm, promptSelect, promptText } from "./encounter-builder-app.js";
-import type { GeneratorPanel } from "./generator-panel.js";
+import { panelActions, type Panel } from "./panel.js";
+import { actorTypeLabel } from "./view-models.js";
 
 export type TreasureMode = "encounter" | "level" | "custom";
 
@@ -47,7 +48,20 @@ export interface TreasurePanelOptions extends TreasureOptions {
 /** Saved form of a treasure result (stored on the recipe). */
 export type TreasureRecord = TreasureRecordV1;
 
-export class TreasurePanel {
+export class TreasurePanel implements Panel {
+  readonly actions: ReadonlySet<string> = panelActions<TreasurePanel>(
+    "setMode",
+    "generate",
+    "reroll",
+    "lock",
+    "replace",
+    "remove",
+    "clear",
+    "inspect",
+    "createLoot",
+    "addToActor",
+    "postChat",
+  );
   readonly service = new TreasureService();
   options: TreasurePanelOptions = {
     ...DEFAULT_TREASURE_OPTIONS,
@@ -143,8 +157,7 @@ export class TreasurePanel {
 
   #themeTraits(): string[] {
     if (!this.options.useThemeTraits) return [];
-    const generator = this.app.extensions.generator as GeneratorPanel | undefined;
-    const last = generator?.lastResult;
+    const last = this.app.panels.generator.lastResult;
     const theme = last && "theme" in last ? last.theme : null;
     const traits = new Set<string>();
     if (theme) {
@@ -295,10 +308,7 @@ export class TreasurePanel {
       this.#rolledForOtherDraft = false;
     } catch (error) {
       console.error("sargas-encounter-builder | treasure generation failed", error);
-      this.app.pushMessage(
-        "error",
-        t("errors.generic", { message: String((error as Error)?.message ?? error) }),
-      );
+      this.app.reportError(error);
     } finally {
       this.busy = false;
     }
@@ -348,7 +358,7 @@ export class TreasurePanel {
   /* ---------------------------- outputs ----------------------------- */
 
   #defaultName(): string {
-    const theme = (this.app.extensions.generator as GeneratorPanel | undefined)?.lastResult;
+    const theme = this.app.panels.generator.lastResult;
     const themeName = theme && "theme" in theme && theme.theme ? theme.theme.name : null;
     return themeName ? t("treasure.lootNameThemed", { theme: themeName }) : t("treasure.lootName");
   }
@@ -381,7 +391,7 @@ export class TreasurePanel {
       .sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9) || a.name.localeCompare(b.name));
     const choices = (fromTokens.length ? fromTokens : fallback).map((a) => ({
       uuid: a.uuid,
-      name: `${a.name} (${t(`actorType.${a.type}`)})`,
+      name: `${a.name} (${actorTypeLabel(a.type)})`,
     }));
     if (choices.length === 0) {
       this.app.pushMessage("warn", t("treasure.noActors"));
@@ -394,7 +404,7 @@ export class TreasurePanel {
     if (!actor) return;
     const ok = await confirm(
       t("treasure.addToActorTitle"),
-      `<p>${escapeHtml(t("treasure.addToActorConfirm", { name: actor.name, count: this.result.entries.length }))}</p>`,
+      escapeHtml(t("treasure.addToActorConfirm", { name: actor.name, count: this.result.entries.length })),
       "fa-solid fa-sack-dollar",
     );
     if (!ok) return;
@@ -420,10 +430,7 @@ export class TreasurePanel {
       this.app.pushMessage("ok", this.lastOutput);
     } catch (error) {
       console.error("sargas-encounter-builder | treasure output failed", error);
-      this.app.pushMessage(
-        "error",
-        t("errors.generic", { message: String((error as Error)?.message ?? error) }),
-      );
+      this.app.reportError(error);
     } finally {
       this.busy = false;
     }

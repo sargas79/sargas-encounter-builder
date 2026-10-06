@@ -1,8 +1,16 @@
 /**
  * Themed random generation panel: theme, archetype, advanced constraints, custom themes.
  */
+import type { CatalogFilter } from "../core/catalog.js";
 import type { CustomThemeRecord } from "../core/schemas.js";
-import { removeEntry, type Draft, type DraftEntry } from "../core/draft.js";
+import {
+  entryFromCatalog,
+  removeEntry,
+  type Draft,
+  type DraftEntry,
+  type DraftEntrySource,
+} from "../core/draft.js";
+import { setGeneratorBound } from "../core/generator-options.js";
 import { hashSeed, rngFromSeed } from "../core/rng.js";
 import {
   ARCHETYPES,
@@ -18,7 +26,9 @@ import { escapeHtml, randomHexSeed, splitList } from "../core/util.js";
 import { DialogV2, isGM } from "../foundry/compat.js";
 import { t } from "../foundry/i18n.js";
 import { services } from "../foundry/services.js";
-import { confirm, type EncounterBuilderApp } from "./encounter-builder-app.js";
+import { confirm } from "./dialogs.js";
+import type { EncounterBuilderApp } from "./encounter-builder-app.js";
+import { panelActions, type Panel } from "./panel.js";
 
 export interface GeneratorOptions {
   /** "auto" or a theme id. */
@@ -35,7 +45,19 @@ export interface GeneratorOptions {
   showAdvanced: boolean;
 }
 
-export class GeneratorPanel {
+export class GeneratorPanel implements Panel {
+  readonly actions: ReadonlySet<string> = panelActions<GeneratorPanel>(
+    "setArchetype",
+    "toggleAdvanced",
+    "generate",
+    "regenerate",
+    "retheme",
+    "exclude",
+    "unexclude",
+    "newTheme",
+    "editTheme",
+    "deleteTheme",
+  );
   options: GeneratorOptions = {
     themeId: "auto",
     archetype: "any",
@@ -52,16 +74,20 @@ export class GeneratorPanel {
   lastResult: ThemedResult | null = null;
   lastSeed: string | null = null;
   busy = false;
-  #themeCache: { key: string; themes: Theme[]; sizes: Map<string, number> } | null = null;
+  #themeCache: {
+    key: string;
+    themes: Theme[];
+    candidates: ThemedCandidate[];
+    sizes: Map<string, number>;
+  } | null = null;
 
   constructor(private readonly app: EncounterBuilderApp) {}
 
   /* ---------------------------- data -------------------------------- */
 
-  async #candidates(): Promise<ThemedCandidate[]> {
-    const { catalog } = services();
+  #candidateFilter(): CatalogFilter {
     const ref = this.app.state.resolved?.roster.reference.level ?? null;
-    const filter = {
+    return {
       ...this.app.state.filter,
       referenceLevel: ref,
       relativeMin: null,
@@ -70,7 +96,10 @@ export class GeneratorPanel {
       levelMax: null,
       search: "",
     };
-    const entries = await catalog.search(filter);
+  }
+
+  async #candidates(filter: CatalogFilter): Promise<ThemedCandidate[]> {
+    const entries = await services().catalog.search(filter);
     return entries.map((c) => ({
       uuid: c.uuid,
       name: c.name,
@@ -83,16 +112,23 @@ export class GeneratorPanel {
   }
 
   async themes(): Promise<{ themes: Theme[]; candidates: ThemedCandidate[]; sizes: Map<string, number> }> {
-    const candidates = await this.#candidates();
+    const { catalog } = services();
     const customs = services().themes.list();
-    const key = `${hashSeed(candidates.map((c) => c.uuid).join("|"))}:${hashSeed(JSON.stringify(customs))}`;
-    if (this.#themeCache?.key === key) {
-      return { themes: this.#themeCache.themes, candidates, sizes: this.#themeCache.sizes };
+    const filter = this.#candidateFilter();
+    // The catalog's version moves whenever its entries, tags or selection change, so a cache hit
+    // needs no search; the selection is keyed too since another GM can change the setting.
+    const stamp = (version: number) =>
+      `${version}:${catalog.selectedPackIds().join(",")}:${JSON.stringify(filter)}:${hashSeed(JSON.stringify(customs))}`;
+    const cached = this.#themeCache;
+    if (cached && cached.key === stamp(catalog.version)) {
+      return { themes: cached.themes, candidates: cached.candidates, sizes: cached.sizes };
     }
+    const candidates = await this.#candidates(filter);
     const themes = availableThemes(candidates, customs);
     const customMap = new Map(customs.map((c) => [c.id, c]));
     const sizes = new Map(themes.map((th) => [th.id, themePool(th, candidates, customMap).length]));
-    this.#themeCache = { key, themes, sizes };
+    // Keyed after the search: loading a pack's index bumps the version.
+    this.#themeCache = { key: stamp(catalog.version), themes, candidates, sizes };
     return { themes, candidates, sizes };
   }
 
@@ -179,21 +215,21 @@ export class GeneratorPanel {
         this.options.outsiderBoss = (target as HTMLInputElement).checked;
         break;
       case "relativeMin":
-      case "relativeMax": {
-        const n = Number.parseInt(value, 10);
-        this.options[key] = Number.isInteger(n)
-          ? Math.max(-4, Math.min(4, n))
-          : key === "relativeMin"
-            ? -4
-            : 4;
-        break;
-      }
+      case "relativeMax":
       case "minCount":
       case "maxCount":
       case "duplicateCap": {
-        const n = Number.parseInt(value, 10);
-        this.options[key] =
-          Number.isInteger(n) && n >= 1 ? n : key === "minCount" ? 1 : key === "maxCount" ? 6 : 4;
+        // Show the stored (clamped, reordered) values without re-rendering the build part, which
+        // would drop focus while the GM tabs through the advanced fields.
+        const touched = setGeneratorBound(this.options, key, value);
+        const form = target.closest(".seb-generator");
+        for (const k of touched) {
+          const input =
+            k === key
+              ? (target as HTMLInputElement)
+              : form?.querySelector<HTMLInputElement>(`[name="gen.${k}"]`);
+          if (input) input.value = String(this.options[k]);
+        }
         break;
       }
       default:
@@ -435,10 +471,7 @@ export class GeneratorPanel {
       }
     } catch (error) {
       console.error("sargas-encounter-builder | generation failed", error);
-      this.app.pushMessage(
-        "error",
-        t("errors.generic", { message: error instanceof Error ? error.message : String(error) }),
-      );
+      this.app.reportError(error);
     } finally {
       this.busy = false;
     }
@@ -447,32 +480,14 @@ export class GeneratorPanel {
 }
 
 function mergeEntries(
-  entries: {
-    uuid: string;
-    name: string;
-    level: number;
-    quantity: number;
-    traits: string[];
-    img: string | null;
-    packLabel: string | null;
-  }[],
+  entries: (DraftEntrySource & { quantity: number })[],
   previousLocks: Map<string, boolean>,
 ): DraftEntry[] {
   const map = new Map<string, DraftEntry>();
   for (const e of entries) {
     const existing = map.get(e.uuid);
     if (existing) existing.quantity += e.quantity;
-    else
-      map.set(e.uuid, {
-        uuid: e.uuid,
-        name: e.name,
-        level: e.level,
-        quantity: e.quantity,
-        locked: previousLocks.get(e.uuid) ?? false,
-        img: e.img,
-        packLabel: e.packLabel,
-        traits: e.traits,
-      });
+    else map.set(e.uuid, { ...entryFromCatalog(e, e.quantity), locked: previousLocks.get(e.uuid) ?? false });
   }
   return [...map.values()];
 }

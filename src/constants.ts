@@ -21,6 +21,10 @@ export const FLAGS = {
   deployment: "deployment",
   /** Provenance marker on Loot actors created from a treasure result. */
   treasure: "treasure",
+  /** Marker on the module-managed summary page of a saved recipe JournalEntry. */
+  summary: "summary",
+  /** Role of a module-created Folder ("recipes", "loot"), so it is found again under any name. */
+  folder: "folder",
 } as const;
 
 /** World setting keys. */
@@ -39,7 +43,11 @@ export const SETTINGS = {
   uiState: "uiState",
 } as const;
 
-/** Names of module-owned documents. */
+/**
+ * English names of module-owned documents. New documents get the localized name
+ * (`documents.*` in lang/en.json); these stay as the fallback and so that folders created by
+ * earlier versions, before folders carried a role flag, are still found by name.
+ */
 export const DOCUMENT_NAMES = {
   dataJournal: "Encounter Builder Data",
   recipeFolder: "Encounter Builder: Saved Encounters",

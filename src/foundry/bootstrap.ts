@@ -1,5 +1,5 @@
 /**
- * GM-only startup: migrations, launcher button, Quench registration.
+ * GM-only startup: migrations and launcher redraw. Quench batches are registered from `module.ts`.
  * Loaded lazily from the `ready` hook so non-GM clients never import the heavy parts.
  */
 import { MODULE_ID } from "../constants.js";
@@ -14,11 +14,6 @@ export async function onReady(): Promise<void> {
   ui.controls?.render({ reset: true });
   ui.actors?.render();
 
-  const quench = (globalThis as { quench?: Quench }).quench;
-  if (quench) {
-    const { registerQuenchTests } = await import("../quench/tests.js");
-    registerQuenchTests(quench);
-  }
   log("ready", {
     module: game.modules.get(MODULE_ID)?.version,
     foundry: game.version,

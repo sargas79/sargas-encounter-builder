@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.4.0
+
+Accessibility, layout and internal restructuring:
+
+- Party, profile and saved-encounter lists work from the keyboard (Tab, then Enter or Space).
+- Tabs follow the standard pattern: arrow keys, Home and End move between them, and screen readers announce
+  each tab and its panel. Form fields, table-editor row inputs and button groups have accessible names.
+- Treasure category chips are keyboard-reachable and show a focus outline.
+- Header messages can be dismissed; info and success messages clear after about 8 seconds.
+- Picking the deploy origin can be cancelled with Escape or a Cancel button, no longer selects tokens, and is
+  cancelled with a warning if the viewed scene changed.
+- The builder window can be made narrower; its layout stacks in small windows.
+- New actor-type labels (vehicle, army, unknown). Journal summaries, ledger labels and module folder and
+  journal names are translatable; existing folders are still found.
+- Internal: the builder window is split into typed panels (Party and Catalog added), dialogs and view models
+  have their own modules, template-callable panel methods are whitelisted, duplicated code and dead handlers
+  are removed, colours are CSS tokens, and tests check template actions and localization keys.
+
+## 0.3.6
+
+Performance, stability and rules edge cases:
+
+- Combat updates to creatures outside the party no longer refresh the builder or wipe fields you are typing in.
+- Only the panels being shown are prepared and redrawn; opening the builder, toggling packs and the first
+  render no longer draw the window twice.
+- Custom tags and themes pick up edits from other GMs or tabs, saving no longer overwrites them, and two
+  simultaneous first saves no longer create two data journals.
+- Drop-zone highlighting no longer flickers or stacks listeners.
+- Data migrations run only on the active GM's client.
+- Generator level and count fields show the corrected value immediately; a minimum above the maximum moves
+  the other bound.
+- Dice formulas no longer join numbers across spaces ("1 2d6" is an error, not 12d6).
+- Tables report overlaps hidden behind a wide row (1–10 with 5–6) without false gaps, and warn on weights
+  below 1, which can never be rolled.
+- With Proficiency Without Level, creatures the system cannot price are flagged and the evaluation is marked
+  incomplete instead of counting 0 XP.
+- The large-party warning appears without a selected threat.
+- The Lair archetype no longer fails when the minimum count is above 1.
+- Treasure can fall back to level-0 items for low-level slots.
+- Deployment refuses hex-grid scenes (gridless still deploys with a warning).
+- Reusing world actors ignores sidebar duplicates, prefers actors the module imported, then the oldest, and
+  also matches legacy `flags.core.sourceId`.
+- Deployed tokens are built through the actor's token document, so wildcard token images work.
+- "Add to actor" merges coins into the actor's existing coins.
+- Deployment failures and the GM treasure chat card are localized.
+
+## 0.3.5
+
+Correctness and data-safety fixes from a full review:
+
+- Generator: encounters with a minimum or maximum number of different creatures (packs, warbands, mixed
+  patrols) no longer fail at random with "no feasible composition" when a valid encounter exists.
+- Themed generator: keeps looking for the closest fit instead of taking the first acceptable one. Packs try
+  other creatures, auto-theme tries other themes, and boss + minions tries an outsider boss before
+  settling for an under-budget result. Theme constraints are still never loosened.
+- Deploy cleanup asks for confirmation, keeps an imported actor that other tokens now use, and keeps a
+  created combat that gained other combatants (removing only the deployment's own). Kept items are listed.
+- Saved encounters: updating one rewrites only the module's own summary page, never the GM's notes.
+- Table editor: template candidates show raw UUIDs (names appear in a hint below) so saving no longer
+  corrupts them; "Derive ranges" also saves native rows; reopening keeps unsaved edits; closing with unsaved
+  changes asks first.
+- Security: saved-encounter names are escaped in the update and delete dialogs.
+- Damaged table flags, recipes and custom themes are repaired on load instead of crashing table validation
+  or silently never triggering an encounter check.
+- Release zips link their own version's download, ship without sourcemaps, and declare Foundry 14 as the
+  maximum compatible version. Quench batches register on `quenchReady`.
+- Development: releases fail if tag, `package.json` and CHANGELOG disagree; CI runs the format check;
+  `--legacy-peer-deps` is gone; `npm run test:coverage` added.
+
 ## 0.3.4
 
 - Threat meter: tier labels that would overlap (Low and Moderate at narrow widths) now drop onto a

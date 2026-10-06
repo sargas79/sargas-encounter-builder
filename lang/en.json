@@ -2,7 +2,8 @@
   "sargas-encounter-builder": {
     "app": {
       "title": "Encounter Builder",
-      "launchTooltip": "Open the Sargas Encounter Builder"
+      "launchTooltip": "Open the Sargas Encounter Builder",
+      "dismiss": "Dismiss message"
     },
     "tabs": {
       "party": "Party",
@@ -100,7 +101,10 @@
       "familiar": "familiar",
       "party": "party",
       "hazard": "hazard",
-      "loot": "loot"
+      "loot": "loot",
+      "vehicle": "vehicle",
+      "army": "army",
+      "unknown": "unknown"
     },
     "footer": {
       "catalog": "{packs} compendiums · {count} creatures indexed",
@@ -429,6 +433,9 @@
       "save": "Save",
       "saveBlocked": "Fix the validation errors before saving.",
       "saved": "Saved {name}.",
+      "unsavedTitle": "Unsaved changes",
+      "unsavedConfirm": "Close {name} and discard the unsaved changes?",
+      "templateCandidateNames": "Resolves to: {names}",
       "dropHint": "Drop Actors, RollTables or Journal entries onto a row.",
       "range": "Range",
       "weight": "Weight",
@@ -468,6 +475,23 @@
         "templateEmpty": "Template has no candidates or traits.",
         "checkInvalid": "Encounter check formula \"{formula}\" is invalid.",
         "noCreatures": "Creature row has no creatures."
+      },
+      "aria": {
+        "weight": "Row {row}: weight",
+        "rangeLow": "Row {row}: range start",
+        "rangeHigh": "Row {row}: range end",
+        "kind": "Row {row}: result kind",
+        "narrativeKind": "Row {row}: narrative kind",
+        "text": "Row {row}: result text",
+        "creatureUuid": "Row {row}, creature {n}: UUID",
+        "creatureQuantity": "Row {row}, creature {n}: quantity",
+        "tableUuid": "Row {row}: nested table UUID",
+        "templateCandidates": "Row {row}: candidate creature UUIDs",
+        "templateTraits": "Row {row}: candidate traits",
+        "composition": "Row {row}: composition",
+        "threat": "Row {row}: threat",
+        "notes": "Row {row}: GM notes",
+        "journal": "Row {row}: journal UUID"
       }
     },
     "saved": {
@@ -542,6 +566,8 @@
       "originCenter": "scene center",
       "pickOrigin": "Pick on canvas",
       "clickCanvas": "Click the canvas…",
+      "cancelPick": "Cancel",
+      "cancelPickHint": "Stop picking the origin (Esc)",
       "noCanvas": "The canvas is not ready.",
       "viewScene": "View the selected scene on the canvas first.",
       "deployButton": "Import & place tokens",
@@ -554,13 +580,14 @@
       "worldActor": "world actor",
       "freshImport": "import fresh copy",
       "warnings": {
-        "unsupportedGrid": "This scene is not a square grid: tokens are placed on a square spiral in pixel units; check positions.",
+        "unsupportedGrid": "This scene is gridless: tokens are placed on a square spiral in pixel units; check positions.",
         "unknownSource": "An entry has an unrecognized source UUID.",
         "someFresh": "Some creatures have no matching world actor and will be imported."
       },
       "blockers": {
         "noScene": "Select a scene.",
-        "nothingToDeploy": "The encounter has no creatures."
+        "nothingToDeploy": "The encounter has no creatures.",
+        "unsupportedGrid": "Hex-grid scenes are not supported: tokens would land off their cells. Use a square or gridless scene."
       },
       "stage": {
         "import": "Import",
@@ -575,7 +602,20 @@
       "ledger": "Documents touched",
       "cleanup": "Remove documents created by this operation",
       "cleanupHint": "Only documents this operation created are deleted. Reused actors and pre-existing tokens are kept.",
-      "cleanupDone": "Cleanup removed {removed} document(s), {failed} failed."
+      "cleanupDone": "Cleanup removed {removed} document(s), {failed} failed.",
+      "cleanupTitle": "Remove created documents",
+      "cleanupConfirm": "Delete the {count} document(s) this operation created? Actors still used by other tokens and combats with other combatants are kept.",
+      "cleanupKept": "Kept {count} document(s) still in use: {names}.",
+      "keptReason": {
+        "actorInUse": "used by other tokens",
+        "combatInUse": "has other combatants"
+      },
+      "kind": {
+        "Actor": "Actor",
+        "Token": "Token",
+        "Combat": "Combat",
+        "Combatant": "Combatant"
+      }
     },
     "treasure": {
       "budgetTitle": "Treasure budget",
@@ -668,7 +708,27 @@
       "levelDiffers": "Budget read at level {level} while the party is level {party}: item slots and value follow the chosen level.",
       "fewerPCs": "{count} below four: −{per} gp each",
       "indexing": "Indexing the equipment compendium…",
-      "staleDraft": "This hoard was rolled for a different encounter. Reroll before saving or deploying it."
+      "staleDraft": "This hoard was rolled for a different encounter. Reroll before saving or deploying it.",
+      "card": {
+        "speaker": "Encounter Builder",
+        "budget": "Level {level}, party of {partySize}, {percent}% of a level: {total} budget.",
+        "itemDetail": "level {level}, {price}",
+        "noItems": "No items.",
+        "coins": "Coins:",
+        "totals": "Items {items} · currency {currency}"
+      }
+    },
+    "documents": {
+      "dataJournal": "Encounter Builder Data",
+      "recipeFolder": "Encounter Builder: Saved Encounters",
+      "lootFolder": "Encounter Builder: Treasure"
+    },
+    "journal": {
+      "summaryPage": "Summary",
+      "summaryEntry": "{name} (level {level}) × {quantity}",
+      "summaryEvaluation": "Saved evaluation: {party} ({size} × level {level}), {xp} XP, inferred {threat}.",
+      "summaryEvaluationIncomplete": "Saved evaluation: {party} ({size} × level {level}), {xp} XP, inferred {threat} (incomplete).",
+      "summaryManaged": "Managed by PF2e Encounter Builder. Edit it from the Encounter Builder's Saved tab."
     }
   }
 }

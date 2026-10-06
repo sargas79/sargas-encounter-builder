@@ -1,4 +1,4 @@
-<section class="seb-tab" data-tab="saved">
+<section class="seb-tab" id="seb-panel-saved" role="tabpanel" aria-labelledby="seb-tab-saved" data-tab="saved">
   <div class="seb-columns seb-columns-narrow-left">
     <aside class="seb-panel">
       <div class="seb-panel-head">
@@ -7,7 +7,7 @@
       </div>
       <div class="seb-scroll">
         {{#each saved.records}}
-        <div class="seb-row seb-row-click{{#if this.selected}} is-selected{{/if}}" data-action="ext" data-ext="saved" data-method="select" data-uuid="{{this.id}}">
+        <div class="seb-row seb-row-click{{#if this.selected}} is-selected{{/if}}" role="button" tabindex="0"{{#if this.selected}} aria-current="true"{{/if}} data-action="ext" data-ext="saved" data-method="select" data-uuid="{{this.id}}">
           <i class="fa-solid fa-scroll seb-row-icon"></i>
           <div class="seb-row-main"><span class="seb-row-name">{{this.name}}</span><span class="seb-row-meta">{{this.origin}} · {{localize "sargas-encounter-builder.saved.creatureCount" count=this.count}} · {{this.updated}}</span></div>
           <div class="seb-row-controls"><button type="button" class="seb-icon-button" data-action="ext" data-ext="saved" data-method="open" data-uuid="{{this.id}}" data-tooltip="{{localize 'sargas-encounter-builder.saved.open'}}" aria-label="{{localize 'sargas-encounter-builder.saved.open'}}"><i class="fa-solid fa-folder-open"></i></button></div>

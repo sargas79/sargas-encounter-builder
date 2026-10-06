@@ -8,6 +8,7 @@ import { PF2eAdapter } from "./pf2e-adapter.js";
 import { TagStoreService } from "./tag-store.js";
 import { ThemeStoreService } from "./theme-store.js";
 import { randomID } from "./compat.js";
+import { registerDataJournalHooks } from "./data-journal.js";
 
 export interface Services {
   adapter: PF2eAdapter;
@@ -31,6 +32,15 @@ export function services(): Services {
   party.registerHooks();
   catalog.registerHooks();
   items.registerHooks();
+  // Another GM, another tab or a migration rewrote a store: drop the cached copy, and re-apply
+  // tags to the loaded catalog (which notifies the open workspace).
+  registerDataJournalHooks((change) => {
+    if (change.tags) {
+      tags.invalidate();
+      catalog.retag();
+    }
+    if (change.themes) themes.invalidate();
+  });
   instance = { adapter, party, catalog, tags, themes, items };
   return instance;
 }

@@ -18,9 +18,9 @@ were verified by reading source code and type definitions, not by executing code
 | Foundry v14           | foundryvtt.com unreachable from the build environment; could not confirm a stable v14 release                | Not confirmed                                          |
 
 **Decision (updated after the maintainer confirmed their world runs Foundry v14):** the module targets
-**Foundry VTT 14** with the PF2e release that supports it, and also declares 13 so the APIs verified below are
-covered. `module.json` declares `compatibility.minimum: "13"`, `compatibility.maximum: "14"`, and leaves
-`verified` unset because the module has not been run. The public PF2e GitHub repository could not be used to
+**Foundry VTT 14** only, with the PF2e release that supports it (PF2e 8.0.0 or later). `module.json` declares
+`compatibility.minimum: "14"`, `compatibility.maximum: "14"`, and leaves `verified` unset because the module has
+not been run. The public PF2e GitHub repository could not be used to
 verify the v14 system API: as of 2026-10-01 its `release`/`master` branches still read 6.12.4 (Foundry 12) and
 `v13-dev` reads 7.9.1 (Foundry 13), with no v14 branch — the repository appears to lag the published system.
 All data paths in §2 were therefore verified against PF2e 7.9.1 sources, and all Foundry APIs in §3 against
@@ -106,7 +106,8 @@ Recorded on 2026-10-01 in the build container (Node 22.22.0, no Foundry):
 | Quench suites                                 | **not executed** (no Foundry available); 4 batches registered in `src/quench/tests.ts` |
 | Manual matrix (`docs/MANUAL-TESTS.md`)        | **not executed**                                                                       |
 
-`module.json` therefore declares `compatibility.minimum: "13"`, `maximum: "14"`, and no `verified`.
+At 0.1.0, `module.json` declared `compatibility.minimum: "13"`, `maximum: "14"`, and no `verified` (superseded:
+see §1 and §6b).
 
 ## 6b. 0.2.0 update
 

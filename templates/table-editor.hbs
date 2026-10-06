@@ -1,17 +1,17 @@
 <div class="seb-editor-body">
   <header class="seb-strip seb-strip-editor">
     <div class="seb-form-row">
-      <div class="seb-field"><label for="seb-ed-formula">{{localize "sargas-encounter-builder.editor.formula"}}</label><div class="seb-inline"><input id="seb-ed-formula" type="text" name="table.formula" value="{{formula}}"><span class="seb-pill">{{formulaRange}}</span></div></div>
-      <div class="seb-field"><label for="seb-ed-mode">{{localize "sargas-encounter-builder.editor.mode"}}</label><div class="seb-inline"><select id="seb-ed-mode" name="table.mode"><option value="range" {{#unless isWeight}}selected{{/unless}}>{{localize "sargas-encounter-builder.editor.modeRange"}}</option><option value="weight" {{#if isWeight}}selected{{/if}}>{{localize "sargas-encounter-builder.editor.modeWeight"}}</option></select>{{#if isWeight}}<button type="button" class="seb-button seb-button-small" data-action="deriveRanges" data-tooltip="{{localize 'sargas-encounter-builder.editor.deriveHint'}}">{{localize "sargas-encounter-builder.editor.derive"}}</button>{{/if}}</div></div>
-      <div class="seb-field seb-field-short"><label for="seb-ed-check">{{localize "sargas-encounter-builder.editor.checkFormula"}}</label><input id="seb-ed-check" type="text" name="table.checkFormula" value="{{encounterCheck.formula}}" placeholder="1d6"></div>
-      <div class="seb-field seb-field-short"><label for="seb-ed-occurs">{{localize "sargas-encounter-builder.editor.checkOccursOn"}}</label><input id="seb-ed-occurs" type="text" name="table.checkOccursOn" value="{{occursOn}}" placeholder="1"></div>
+      <div class="seb-field"><label for="{{uid}}-formula">{{localize "sargas-encounter-builder.editor.formula"}}</label><div class="seb-inline"><input id="{{uid}}-formula" type="text" name="table.formula" value="{{formula}}"><span class="seb-pill">{{formulaRange}}</span></div></div>
+      <div class="seb-field"><label for="{{uid}}-mode">{{localize "sargas-encounter-builder.editor.mode"}}</label><div class="seb-inline"><select id="{{uid}}-mode" name="table.mode"><option value="range" {{#unless isWeight}}selected{{/unless}}>{{localize "sargas-encounter-builder.editor.modeRange"}}</option><option value="weight" {{#if isWeight}}selected{{/if}}>{{localize "sargas-encounter-builder.editor.modeWeight"}}</option></select>{{#if isWeight}}<button type="button" class="seb-button seb-button-small" data-action="deriveRanges" data-tooltip="{{localize 'sargas-encounter-builder.editor.deriveHint'}}">{{localize "sargas-encounter-builder.editor.derive"}}</button>{{/if}}</div></div>
+      <div class="seb-field seb-field-short"><label for="{{uid}}-check">{{localize "sargas-encounter-builder.editor.checkFormula"}}</label><input id="{{uid}}-check" type="text" name="table.checkFormula" value="{{encounterCheck.formula}}" placeholder="1d6"></div>
+      <div class="seb-field seb-field-short"><label for="{{uid}}-occurs">{{localize "sargas-encounter-builder.editor.checkOccursOn"}}</label><input id="{{uid}}-occurs" type="text" name="table.checkOccursOn" value="{{occursOn}}" placeholder="1"></div>
     </div>
     <div class="seb-form-row">
-      <div class="seb-field"><label>{{localize "sargas-encounter-builder.editor.tagRegion"}}</label><input type="text" name="table.tag.region" value="{{tags.region}}"></div>
-      <div class="seb-field"><label>{{localize "sargas-encounter-builder.editor.tagTerrain"}}</label><input type="text" name="table.tag.terrain" value="{{tags.terrain}}"></div>
-      <div class="seb-field"><label>{{localize "sargas-encounter-builder.editor.tagSeason"}}</label><input type="text" name="table.tag.season" value="{{tags.season}}"></div>
-      <div class="seb-field"><label>{{localize "sargas-encounter-builder.editor.tagTime"}}</label><input type="text" name="table.tag.timeOfDay" value="{{tags.timeOfDay}}"></div>
-      <div class="seb-field seb-field-wide"><label>{{localize "sargas-encounter-builder.editor.notes"}}</label><input type="text" name="table.notes" value="{{flags.notes}}"></div>
+      <div class="seb-field"><label for="{{uid}}-region">{{localize "sargas-encounter-builder.editor.tagRegion"}}</label><input type="text" id="{{uid}}-region" name="table.tag.region" value="{{tags.region}}"></div>
+      <div class="seb-field"><label for="{{uid}}-terrain">{{localize "sargas-encounter-builder.editor.tagTerrain"}}</label><input type="text" id="{{uid}}-terrain" name="table.tag.terrain" value="{{tags.terrain}}"></div>
+      <div class="seb-field"><label for="{{uid}}-season">{{localize "sargas-encounter-builder.editor.tagSeason"}}</label><input type="text" id="{{uid}}-season" name="table.tag.season" value="{{tags.season}}"></div>
+      <div class="seb-field"><label for="{{uid}}-time">{{localize "sargas-encounter-builder.editor.tagTime"}}</label><input type="text" id="{{uid}}-time" name="table.tag.timeOfDay" value="{{tags.timeOfDay}}"></div>
+      <div class="seb-field seb-field-wide"><label for="{{uid}}-notes">{{localize "sargas-encounter-builder.editor.notes"}}</label><input type="text" id="{{uid}}-notes" name="table.notes" value="{{flags.notes}}"></div>
     </div>
   </header>
   {{#unless replacement}}<div class="seb-note is-warn">{{localize "sargas-encounter-builder.editor.noReplacement"}}</div>{{/unless}}
@@ -29,11 +29,11 @@
     <div class="seb-ed-range">
       {{#if ../isWeight}}
       <label class="seb-eyebrow">{{localize "sargas-encounter-builder.editor.weight"}}</label>
-      <input type="number" name="row.{{this.index}}.weight" value="{{this.weight}}" min="0" {{#if this.isNative}}disabled{{/if}}>
+      <input type="number" name="row.{{this.index}}.weight" aria-label="{{localize 'sargas-encounter-builder.editor.aria.weight' row=this.rowNumber}}" value="{{this.weight}}" min="0" {{#if this.isNative}}disabled{{/if}}>
       <span class="seb-text-dim">{{this.range.[0]}}–{{this.range.[1]}}</span>
       {{else}}
       <label class="seb-eyebrow">{{localize "sargas-encounter-builder.editor.range"}}</label>
-      <div class="seb-inline"><input type="number" name="row.{{this.index}}.lo" value="{{this.range.[0]}}" {{#if this.isNative}}disabled{{/if}}><span>–</span><input type="number" name="row.{{this.index}}.hi" value="{{this.range.[1]}}" {{#if this.isNative}}disabled{{/if}}></div>
+      <div class="seb-inline"><input type="number" name="row.{{this.index}}.lo" aria-label="{{localize 'sargas-encounter-builder.editor.aria.rangeLow' row=this.rowNumber}}" value="{{this.range.[0]}}" {{#if this.isNative}}disabled{{/if}}><span>–</span><input type="number" name="row.{{this.index}}.hi" aria-label="{{localize 'sargas-encounter-builder.editor.aria.rangeHigh' row=this.rowNumber}}" value="{{this.range.[1]}}" {{#if this.isNative}}disabled{{/if}}></div>
       {{/if}}
     </div>
     <div class="seb-ed-main">
@@ -42,40 +42,41 @@
         <button type="button" class="seb-button seb-button-small" data-action="configureRow"><i class="fa-solid fa-wand-magic-sparkles"></i> {{localize "sargas-encounter-builder.editor.configure"}}</button>
       {{else}}
         <div class="seb-inline">
-          <select name="row.{{this.index}}.kind">{{#each this.kinds}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</select>
-          {{#if this.isNarrative}}<select name="row.{{this.index}}.narrativeKind">{{#each this.narrativeKinds}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</select>{{/if}}
+          <select name="row.{{this.index}}.kind" aria-label="{{localize 'sargas-encounter-builder.editor.aria.kind' row=this.rowNumber}}">{{#each this.kinds}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</select>
+          {{#if this.isNarrative}}<select name="row.{{this.index}}.narrativeKind" aria-label="{{localize 'sargas-encounter-builder.editor.aria.narrativeKind' row=this.rowNumber}}">{{#each this.narrativeKinds}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</select>{{/if}}
         </div>
-        <input type="text" name="row.{{this.index}}.text" value="{{this.text}}" placeholder="{{localize 'sargas-encounter-builder.editor.textPlaceholder'}}">
+        <input type="text" name="row.{{this.index}}.text" aria-label="{{localize 'sargas-encounter-builder.editor.aria.text' row=this.rowNumber}}" value="{{this.text}}" placeholder="{{localize 'sargas-encounter-builder.editor.textPlaceholder'}}">
         {{#if this.isCreatures}}
           {{#each this.creatures}}
           <div class="seb-ed-creature">
-            <input type="text" name="row.{{../index}}.creature.{{this.ci}}.uuid" value="{{this.uuid}}" placeholder="Compendium.… / Actor.…" data-tooltip="{{this.name}}">
-            <input type="text" name="row.{{../index}}.creature.{{this.ci}}.quantity" value="{{this.quantity}}" placeholder="1d4+1" class="{{#unless this.quantityValid}}is-invalid{{/unless}}">
+            <input type="text" name="row.{{../index}}.creature.{{this.ci}}.uuid" aria-label="{{localize 'sargas-encounter-builder.editor.aria.creatureUuid' row=../rowNumber n=this.number}}" value="{{this.uuid}}" placeholder="Compendium.… / Actor.…" data-tooltip="{{this.name}}">
+            <input type="text" name="row.{{../index}}.creature.{{this.ci}}.quantity" aria-label="{{localize 'sargas-encounter-builder.editor.aria.creatureQuantity' row=../rowNumber n=this.number}}" value="{{this.quantity}}" placeholder="1d4+1" class="{{#unless this.quantityValid}}is-invalid{{/unless}}">
             <span class="seb-row-meta">{{this.name}}</span>
             <button type="button" class="seb-icon-button seb-icon-danger" data-action="removeCreature" data-ci="{{this.ci}}" data-tooltip="{{localize 'sargas-encounter-builder.build.remove'}}" aria-label="{{localize 'sargas-encounter-builder.build.remove'}}"><i class="fa-solid fa-xmark"></i></button>
           </div>
           {{/each}}
           <button type="button" class="seb-button seb-button-small" data-action="addCreature"><i class="fa-solid fa-plus"></i> {{localize "sargas-encounter-builder.editor.addCreature"}}</button>
         {{/if}}
-        {{#if this.isTable}}<div class="seb-inline"><input type="text" name="row.{{this.index}}.tableUuid" value="{{this.flags.tableUuid}}" placeholder="RollTable.…"><span class="seb-row-meta">{{this.tableName}}</span></div>{{/if}}
+        {{#if this.isTable}}<div class="seb-inline"><input type="text" name="row.{{this.index}}.tableUuid" aria-label="{{localize 'sargas-encounter-builder.editor.aria.tableUuid' row=this.rowNumber}}" value="{{this.flags.tableUuid}}" placeholder="RollTable.…"><span class="seb-row-meta">{{this.tableName}}</span></div>{{/if}}
         {{#if this.isTemplate}}
-          <input type="text" name="row.{{this.index}}.template.candidates" value="{{this.templateCandidates}}" placeholder="{{localize 'sargas-encounter-builder.editor.templateCandidates'}}">
-          <input type="text" name="row.{{this.index}}.template.traits" value="{{this.templateTraits}}" placeholder="{{localize 'sargas-encounter-builder.editor.templateTraits'}}">
+          <input type="text" name="row.{{this.index}}.template.candidates" aria-label="{{localize 'sargas-encounter-builder.editor.aria.templateCandidates' row=this.rowNumber}}" value="{{this.templateCandidates}}" placeholder="{{localize 'sargas-encounter-builder.editor.templateCandidates'}}">
+          {{#if this.templateCandidateNames}}<div class="seb-hint">{{localize "sargas-encounter-builder.editor.templateCandidateNames" names=this.templateCandidateNames}}</div>{{/if}}
+          <input type="text" name="row.{{this.index}}.template.traits" aria-label="{{localize 'sargas-encounter-builder.editor.aria.templateTraits' row=this.rowNumber}}" value="{{this.templateTraits}}" placeholder="{{localize 'sargas-encounter-builder.editor.templateTraits'}}">
           <div class="seb-inline">
             <label class="seb-row-meta">{{localize "sargas-encounter-builder.generator.relativeMin"}} <input type="number" name="row.{{this.index}}.template.levelMin" value="{{this.template.levelMin}}"></label>
             <label class="seb-row-meta">{{localize "sargas-encounter-builder.generator.relativeMax"}} <input type="number" name="row.{{this.index}}.template.levelMax" value="{{this.template.levelMax}}"></label>
-            <select name="row.{{this.index}}.template.composition">
+            <select name="row.{{this.index}}.template.composition" aria-label="{{localize 'sargas-encounter-builder.editor.aria.composition' row=this.rowNumber}}">
               {{#each this.compositions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}
             </select>
-            <select name="row.{{this.index}}.template.threat">
+            <select name="row.{{this.index}}.template.threat" aria-label="{{localize 'sargas-encounter-builder.editor.aria.threat' row=this.rowNumber}}">
               <option value="" {{#unless this.template.threat}}selected{{/unless}}>{{localize "sargas-encounter-builder.editor.templateThreatParty"}}</option>
               {{#each this.threatOptions}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}
             </select>
           </div>
         {{/if}}
         <div class="seb-inline">
-          <input type="text" name="row.{{this.index}}.notes" value="{{this.flags.notes}}" placeholder="{{localize 'sargas-encounter-builder.editor.rowNotes'}}">
-          <input type="text" name="row.{{this.index}}.journalUuid" value="{{this.flags.journalUuid}}" placeholder="{{localize 'sargas-encounter-builder.editor.journal'}}">
+          <input type="text" name="row.{{this.index}}.notes" aria-label="{{localize 'sargas-encounter-builder.editor.aria.notes' row=this.rowNumber}}" value="{{this.flags.notes}}" placeholder="{{localize 'sargas-encounter-builder.editor.rowNotes'}}">
+          <input type="text" name="row.{{this.index}}.journalUuid" aria-label="{{localize 'sargas-encounter-builder.editor.aria.journal' row=this.rowNumber}}" value="{{this.flags.journalUuid}}" placeholder="{{localize 'sargas-encounter-builder.editor.journal'}}">
         </div>
       {{/if}}
       {{#each this.issues}}<div class="seb-note {{#if (eq this.level "error")}}is-error{{else}}is-warn{{/if}} is-inline">{{this.text}}</div>{{/each}}

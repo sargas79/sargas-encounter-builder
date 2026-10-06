@@ -32,5 +32,5 @@
 <div class="seb-note {{#if header.variantUnsupported}}is-warn{{/if}}"><i class="fa-solid fa-flask"></i> {{#if header.systemCalculation}}{{localize "sargas-encounter-builder.evaluation.pwolSystem"}}{{else}}{{localize "sargas-encounter-builder.evaluation.pwolUnsupported"}}{{/if}}</div>
 {{/if}}
 {{#each header.blockers}}<div class="seb-note is-error"><i class="fa-solid fa-circle-exclamation"></i> {{this}}</div>{{/each}}
-{{#each messages}}<div class="seb-note is-{{this.level}}">{{this.text}}</div>{{/each}}
+{{#each messages}}<div class="seb-note seb-message is-{{this.level}}" role="{{#if (eq this.level "error")}}alert{{else}}status{{/if}}"><span class="seb-message-text">{{this.text}}</span><button type="button" class="seb-icon-button seb-message-dismiss" data-action="dismissMessage" data-id="{{this.id}}" data-tooltip="{{localize 'sargas-encounter-builder.app.dismiss'}}" aria-label="{{localize 'sargas-encounter-builder.app.dismiss'}}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>{{/each}}
 </div>

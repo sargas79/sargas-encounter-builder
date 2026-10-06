@@ -1,4 +1,4 @@
-<section class="seb-tab" data-tab="treasure">
+<section class="seb-tab" id="seb-panel-treasure" role="tabpanel" aria-labelledby="seb-tab-treasure" data-tab="treasure">
   {{#unless ready}}
   <div class="seb-empty seb-gate"><i class="fa-solid fa-lock"></i><p class="seb-empty-title">{{gate.title}}</p><p class="seb-empty-hint">{{gate.hint}}</p><button type="button" class="seb-button seb-button-primary" data-action="changeParty"><i class="fa-solid fa-dragon"></i> {{localize "sargas-encounter-builder.party.startDialog"}}</button></div>
   {{else}}
@@ -10,8 +10,8 @@
       </div>
 
       <div class="seb-field">
-        <label>{{localize "sargas-encounter-builder.treasure.modeLabel"}}</label>
-        <div class="seb-segments seb-segments-wrap" role="group">
+        <label id="seb-treasure-mode-label">{{localize "sargas-encounter-builder.treasure.modeLabel"}}</label>
+        <div class="seb-segments seb-segments-wrap" role="group" aria-labelledby="seb-treasure-mode-label">
           {{#each treasure.modes}}<button type="button" class="seb-segment{{#if this.active}} is-active{{/if}}" data-action="ext" data-ext="treasure" data-method="setMode" data-value="{{this.value}}" data-tooltip="{{this.hint}}" aria-pressed="{{#if this.active}}true{{else}}false{{/if}}">{{this.label}}</button>{{/each}}
         </div>
       </div>
@@ -54,8 +54,8 @@
       </div>
       {{#if treasure.categories.length}}
       <div class="seb-field">
-        <label>{{localize "sargas-encounter-builder.treasure.categories"}}</label>
-        <div class="seb-chips" role="group">{{#each treasure.categories}}<label class="seb-chip{{#unless this.excluded}} is-active{{/unless}}"><input type="checkbox" class="seb-chip-input" name="treasure.category" data-category="{{this.value}}" {{#unless this.excluded}}checked{{/unless}}> {{this.label}}</label>{{/each}}</div>
+        <label id="seb-treasure-categories-label">{{localize "sargas-encounter-builder.treasure.categories"}}</label>
+        <div class="seb-chips" role="group" aria-labelledby="seb-treasure-categories-label">{{#each treasure.categories}}<label class="seb-chip{{#unless this.excluded}} is-active{{/unless}}"><input type="checkbox" class="seb-chip-input" name="treasure.category" data-category="{{this.value}}" {{#unless this.excluded}}checked{{/unless}}> {{this.label}}</label>{{/each}}</div>
       </div>
       {{/if}}
 

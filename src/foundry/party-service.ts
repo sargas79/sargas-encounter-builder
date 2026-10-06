@@ -62,6 +62,8 @@ export class PartyService {
   #listeners = new Set<() => void>();
   #hookIds: number[] = [];
   #summaryCache = new Map<string, ActorSummary>();
+  /** Members last read from each linked Party actor, so their updates count as relevant. */
+  #linkedMembers = new Map<string, string[]>();
 
   constructor(
     private readonly resolver: ActorResolver,
@@ -168,6 +170,7 @@ export class PartyService {
     let linkedMemberUuids: string[] | null = null;
     if (profile.kind === "linked" && profile.partyActorUuid) {
       linkedMemberUuids = await this.resolver.partyMemberUuids(profile.partyActorUuid);
+      if (linkedMemberUuids !== null) this.#linkedMembers.set(profile.partyActorUuid, linkedMemberUuids);
       if (linkedMemberUuids === null) {
         // The Party actor is gone: fall back to overrides so the GM sees what used to be there.
         linkedMemberUuids = profile.members.map((m) => m.uuid);
@@ -218,13 +221,38 @@ export class PartyService {
     }
   }
 
-  /** Called from Foundry hooks (registered once by the app) when an actor changes. */
-  handleActorChange(actorUuid: string, changed?: Record<string, unknown>): void {
-    const relevant =
+  /**
+   * UUIDs whose changes can alter what the workspace shows: members of every profile (the party
+   * panel lists them all), each linked Party actor, and the members last read from those actors.
+   */
+  #watchedUuids(): Set<string> {
+    const out = new Set<string>();
+    for (const profile of this.profiles()) {
+      for (const m of profile.members) out.add(m.uuid);
+      if (profile.partyActorUuid) {
+        out.add(profile.partyActorUuid);
+        for (const uuid of this.#linkedMembers.get(profile.partyActorUuid) ?? []) out.add(uuid);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Called from Foundry hooks (registered once) when an actor changes. Emits only when the actor
+   * belongs to a profile or linked Party (a combatant's HP change must not re-render the workspace);
+   * creating or deleting a Party actor also emits, since it changes the linkable parties.
+   */
+  handleActorChange(
+    actorUuid: string,
+    changed?: Record<string, unknown>,
+    { actorType }: { actorType?: string } = {},
+  ): void {
+    const relevantFields =
       !changed || "system" in changed || "name" in changed || "ownership" in changed || "items" in changed;
-    if (!relevant) return;
+    if (!relevantFields) return;
     this.invalidate(actorUuid);
-    this.#emit();
+    const lifecycle = !changed;
+    if (this.#watchedUuids().has(actorUuid) || (lifecycle && actorType === "party")) this.#emit();
   }
 
   /** Register Foundry hooks once; returns an unregister function. */
@@ -232,11 +260,12 @@ export class PartyService {
     if (this.#hookIds.length) return () => this.unregisterHooks();
     const onUpdate = (actor: ActorDocument, changed: Record<string, unknown>) =>
       this.handleActorChange(actor.uuid, changed);
-    const onDelete = (actor: ActorDocument) => this.handleActorChange(actor.uuid);
+    const onLifecycle = (actor: ActorDocument) =>
+      this.handleActorChange(actor.uuid, undefined, { actorType: actor.type });
     this.#hookIds.push(
       Hooks.on("updateActor", onUpdate),
-      Hooks.on("deleteActor", onDelete),
-      Hooks.on("createActor", onDelete),
+      Hooks.on("deleteActor", onLifecycle),
+      Hooks.on("createActor", onLifecycle),
     );
     return () => this.unregisterHooks();
   }

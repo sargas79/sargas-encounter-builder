@@ -139,6 +139,25 @@ export function archetypeConstraints(archetype: Archetype, maxCountCap: number):
   }
 }
 
+/**
+ * Creature count range for the solver. A solo composition (lair) is defined by its count, so the
+ * archetype's range wins and the user's min/max are clamped into it. Otherwise the archetype's own
+ * minimum wins over a user cap that would make the range empty.
+ */
+export function archetypeCountRange(
+  constraints: Pick<ArchetypeConstraints, "composition" | "minCount" | "maxCount">,
+  userMinCount: number | undefined,
+  maxCountCap: number,
+): { minCount: number; maxCount: number } {
+  if (constraints.composition === "solo") {
+    const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+    const minCount = clamp(userMinCount ?? constraints.minCount, constraints.minCount, constraints.maxCount);
+    return { minCount, maxCount: clamp(maxCountCap, minCount, constraints.maxCount) };
+  }
+  const minCount = Math.max(userMinCount ?? 1, constraints.minCount);
+  return { minCount, maxCount: Math.max(minCount, Math.min(maxCountCap, constraints.maxCount)) };
+}
+
 /* -------------------------------------------- */
 /*  Themes available for a candidate set        */
 /* -------------------------------------------- */
@@ -161,6 +180,7 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
   const constraints = archetypeConstraints(archetype, maxCountCap);
   const locked = input.locked ?? [];
   const themesTried: string[] = [];
+  const counts = archetypeCountRange(constraints, input.minCount, maxCountCap);
 
   // Resolve candidate themes.
   let themes: Theme[];
@@ -221,6 +241,13 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
 
   let lastFailure: GeneratorResult | null = null;
   let lastTheme: Theme | null = null;
+  // Best success so far across creatures, themes and boss choices. Only an exact fit ends the search early;
+  // otherwise every attempt is tried and the closest result wins.
+  let best: ThemedSuccess | null = null;
+  const keep = (candidate: ThemedSuccess): boolean => {
+    if (!best || betterFit(candidate, best)) best = candidate;
+    return candidate.fit === "exact";
+  };
   for (const theme of themes) {
     themesTried.push(theme.id);
     lastTheme = theme;
@@ -236,12 +263,8 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
       candidates: pool,
       relativeMin: Math.max(input.relativeMin ?? -4, constraints.relativeMin ?? -4),
       relativeMax: Math.min(input.relativeMax ?? 4, constraints.relativeMax ?? 4),
-      // The archetype's own minimum wins over a user cap that would make the range empty.
-      minCount: Math.max(input.minCount ?? 1, constraints.minCount),
-      maxCount: Math.max(
-        Math.max(input.minCount ?? 1, constraints.minCount),
-        Math.min(maxCountCap, constraints.maxCount),
-      ),
+      minCount: counts.minCount,
+      maxCount: counts.maxCount,
       composition: constraints.composition,
       duplicateCap: constraints.duplicateCap ?? input.duplicateCap ?? 4,
       excludeUuids: input.excludeUuids,
@@ -269,8 +292,9 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
         lockedUuids.length === 1 ? pool.filter((c) => c.uuid === lockedUuids[0]) : shuffle(rng, pool);
       for (const creature of choices.slice(0, 40)) {
         const result = generateEncounter({ ...base, candidates: [creature] });
-        if (result.ok) return success(result, theme, archetype, null, pool.length, themesTried);
-        lastFailure = result;
+        if (result.ok) {
+          if (keep(success(result, theme, archetype, null, pool.length, themesTried))) return best!;
+        } else lastFailure = result;
       }
       continue;
     }
@@ -278,8 +302,11 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
     // Boss with minions: optionally pick the boss from outside the theme.
     if (archetype === "bossMinions" && (input.outsiderBoss ?? true) && !locked.length) {
       const inTheme = generateEncounter(base);
-      if (inTheme.ok) return success(inTheme, theme, archetype, null, pool.length, themesTried);
-      lastFailure = inTheme;
+      if (inTheme.ok) {
+        if (keep(success(inTheme, theme, archetype, null, pool.length, themesTried))) return best!;
+        // An in-theme near fit is preferred over the outsider relaxation; an under-budget one is not.
+        if (inTheme.fit !== "under") continue;
+      } else lastFailure = inTheme;
       const poolUuids = new Set(pool.map((c) => c.uuid));
       const excludedUuids = new Set(input.excludeUuids ?? []);
       const outsiders = shuffle(
@@ -311,7 +338,7 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
           const outsider = result.entries.find((e) => e.uuid === boss.uuid) ?? null;
           // The boss was passed as locked for the solver; present it as generated.
           const entries = result.entries.map((e) => (e.uuid === boss.uuid ? { ...e, locked: false } : e));
-          return success(
+          const candidate = success(
             { ...result, entries },
             theme,
             archetype,
@@ -319,16 +346,19 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
             pool.length,
             themesTried,
           );
-        }
-        lastFailure = result;
+          if (keep(candidate)) return best!;
+        } else lastFailure = result;
       }
       continue;
     }
 
     const result = generateEncounter(base);
-    if (result.ok) return success(result, theme, archetype, null, pool.length, themesTried);
-    lastFailure = result;
+    if (result.ok) {
+      if (keep(success(result, theme, archetype, null, pool.length, themesTried))) return best!;
+    } else lastFailure = result;
   }
+
+  if (best) return best;
 
   if (!lastFailure)
     return {
@@ -347,6 +377,14 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
     archetype,
     themesTried,
   };
+}
+
+const FIT_RANK: Record<GeneratorSuccess["fit"], number> = { exact: 0, near: 1, under: 2 };
+
+/** exact > near > under, then closest to the budget. Ties keep the earlier result. */
+function betterFit(a: GeneratorSuccess, b: GeneratorSuccess): boolean {
+  if (FIT_RANK[a.fit] !== FIT_RANK[b.fit]) return FIT_RANK[a.fit] < FIT_RANK[b.fit];
+  return Math.abs(a.difference) < Math.abs(b.difference);
 }
 
 function success(

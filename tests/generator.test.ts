@@ -280,3 +280,76 @@ describe("T10: seeded generation is reproducible and all hard constraints hold",
     );
   });
 });
+
+describe("distinct-creature limits are respected when choosing a level mix", () => {
+  it("never fails with maxDistinct 1 when a single-creature mix exists (seed sweep)", () => {
+    // 0, -1, -2, -2 relative to level 5. A mixed-level multiset (e.g. 0 + -1 + -2) cannot be filled with one
+    // stat block; the solver must pick a single-level mix such as 2x level 5 instead of failing.
+    const candidates = [candidate("l5", 5), candidate("l4", 4), candidate("l3a", 3), candidate("l3b", 3)];
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 1_000_000 }), (seed) => {
+        const input: GeneratorInput = {
+          ...base(),
+          candidates,
+          maxDistinctCreatures: 1,
+          rng: mulberry32(seed),
+        };
+        const result = generateEncounter(input);
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(hardConstraintViolations(input, result)).toEqual([]);
+          expect(result.entries).toHaveLength(1);
+        }
+        return true;
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it("never fails with minDistinct 2 when only one creature exists at some level (seed sweep)", () => {
+    // A single stat block at -2 cannot supply two distinct creatures on its own; mixes that need that are skipped.
+    const candidates = [candidate("solo-2", 3), candidate("p1", 4), candidate("p2", 5)];
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 1_000_000 }), (seed) => {
+        const input: GeneratorInput = {
+          ...base(),
+          candidates,
+          composition: "mixedPatrol",
+          minDistinctCreatures: 2,
+          rng: mulberry32(seed),
+        };
+        const result = generateEncounter(input);
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(hardConstraintViolations(input, result)).toEqual([]);
+        return true;
+      }),
+      { numRuns: 300 },
+    );
+    // Only one stat block in the pool at all: the minimum is unreachable and reported, not loosened.
+    const impossible = generateEncounter({
+      ...base(),
+      candidates: [candidate("solo-2", 3)],
+      composition: "mixedPatrol",
+      minDistinctCreatures: 2,
+    });
+    expect(impossible.ok).toBe(false);
+    if (!impossible.ok) expect(impossible.reason).toBe("noFeasibleComposition");
+  });
+
+  it("keeps a feasible way to finish when filling several levels under maxDistinct 2", () => {
+    const candidates = [candidate("a1", 5), candidate("a2", 5), candidate("b1", 3), candidate("b2", 3)];
+    for (let seed = 1; seed <= 200; seed++) {
+      const input: GeneratorInput = {
+        ...base(),
+        candidates,
+        minCount: 3,
+        maxDistinctCreatures: 2,
+        duplicateCap: 2,
+        rng: mulberry32(seed),
+      };
+      const result = generateEncounter(input);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(hardConstraintViolations(input, result)).toEqual([]);
+    }
+  });
+});

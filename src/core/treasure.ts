@@ -93,6 +93,8 @@ export const DEFAULT_TREASURE_OPTIONS: TreasureOptions = {
 };
 
 export const MIN_TREASURE_LEVEL = 1;
+/** Lowest item level a slot may relax to. Table rows start at 1, but level-0 items exist. */
+export const MIN_ITEM_LEVEL = 0;
 export const MAX_TREASURE_LEVEL = 20;
 
 /* -------------------------------------------- */
@@ -362,7 +364,7 @@ function pickForSlot(
   options: TreasureOptions,
   rng: Rng,
 ): { candidate: TreasureCandidate; relaxedTo: number | null } | null {
-  for (let level = slotLevel; level >= Math.max(MIN_TREASURE_LEVEL, slotLevel - 2); level--) {
+  for (let level = slotLevel; level >= Math.max(MIN_ITEM_LEVEL, slotLevel - 2); level--) {
     const pool = eligible.filter(
       (c) => c.kind === kind && c.level === level && c.price <= room && !chosen.has(c.uuid),
     );

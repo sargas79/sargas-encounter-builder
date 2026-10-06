@@ -1,12 +1,14 @@
 /**
  * "New encounter" start dialog: party, threat, mixed-level policy and mode, asked before the
- * workspace opens. Returns null when cancelled.
+ * workspace opens. Returns null when cancelled. Also applies the answer to the party profiles.
  */
 import { THREAT_LEVELS, type ReferenceLevelPolicy, type ThreatLevel } from "../core/budget.js";
 import type { PartyProfile } from "../core/schemas.js";
 import { DialogV2, renderTemplate } from "../foundry/compat.js";
 import { t } from "../foundry/i18n.js";
-import { MODULE_ID } from "../constants.js";
+import { MODULE_ID, SETTINGS } from "../constants.js";
+import { services } from "../foundry/services.js";
+import { getSetting, setSetting } from "../foundry/settings.js";
 
 export type StartMode = "manual" | "random" | "table" | "saved";
 
@@ -145,4 +147,85 @@ function readChoice(root: HTMLElement): StartChoice {
     manualLevel: Number.isInteger(manualRaw) ? manualRaw : null,
     mode: (MODES as string[]).includes(read("mode")) ? (read("mode") as StartMode) : "random",
   };
+}
+
+/* -------------------------------------------- */
+/*  Workspace flow                              */
+/* -------------------------------------------- */
+
+/** Last start-dialog answers, remembered per client. */
+export interface UiState {
+  lastParty?: string;
+  lastMode?: StartMode;
+  lastThreat?: ThreatLevel;
+}
+
+export function loadUiState(): UiState {
+  try {
+    return (getSetting<UiState>(SETTINGS.uiState) ?? {}) as UiState;
+  } catch {
+    return {};
+  }
+}
+
+export async function saveUiState(patch: UiState): Promise<void> {
+  try {
+    await setSetting(SETTINGS.uiState, { ...loadUiState(), ...patch });
+  } catch {
+    /* client setting unavailable in tests */
+  }
+}
+
+/** Show the dialog pre-filled from the active profile and the last answers. */
+export async function askStartChoice(): Promise<StartChoice | null> {
+  const { party, adapter } = services();
+  const ui = loadUiState();
+  const active = party.activeProfile();
+  const initialParty =
+    ui.lastParty ??
+    (active
+      ? active.kind === "linked" && active.partyActorUuid
+        ? `actor:${active.partyActorUuid}`
+        : `profile:${active.id}`
+      : undefined);
+  return showStartDialog({
+    partyActors: adapter.listPartyActors(),
+    profiles: party.profiles(),
+    initial: {
+      party: initialParty,
+      threat: active?.selectedThreat ?? ui.lastThreat,
+      mode: ui.lastMode,
+      policy: active?.referencePolicy ?? undefined,
+      manualLevel: active?.manualReferenceLevel ?? null,
+    },
+  });
+}
+
+/**
+ * Find or create the chosen profile, store the threat and policy on it, make it active and
+ * remember the answers. Returns the profile as it was before the update.
+ */
+export async function activateStartChoice(choice: StartChoice): Promise<PartyProfile> {
+  const { party, adapter } = services();
+  let profile: PartyProfile | null = null;
+  if (choice.party.startsWith("actor:")) {
+    const uuid = choice.party.slice("actor:".length);
+    profile = party.profiles().find((p) => p.kind === "linked" && p.partyActorUuid === uuid) ?? null;
+    if (!profile) {
+      const actor = adapter.listPartyActors().find((a) => a.uuid === uuid);
+      profile = await party.createProfile(actor?.name ?? t("party.defaultName"), "linked", uuid);
+    }
+  } else if (choice.party.startsWith("profile:")) {
+    profile = party.getProfile(choice.party.slice("profile:".length));
+  }
+  if (!profile) profile = await party.createProfile(t("party.defaultName"), "standalone");
+  await party.updateProfile({
+    ...profile,
+    selectedThreat: choice.threat,
+    referencePolicy: choice.policy,
+    manualReferenceLevel: choice.manualLevel,
+  });
+  await party.setActive(profile.id);
+  await saveUiState({ lastParty: choice.party, lastMode: choice.mode, lastThreat: choice.threat });
+  return profile;
 }

@@ -288,8 +288,9 @@ export function evaluateEncounter(options: EvaluateOptions): EncounterEvaluation
       else if (difference < 0 && !tier.isCeiling)
         warnings.push({ code: "underBudget", data: { difference } });
     }
-    if (tier.largeParty) warnings.push({ code: "largeParty", data: { partySize } });
   }
+  // Independent of the selected threat: the party-size caveat applies to every evaluation.
+  if (partySize > LARGE_PARTY_THRESHOLD) warnings.push({ code: "largeParty", data: { partySize } });
 
   const inferred = inferThreat(supportedXP, partySize, {
     hasAboveRange: aboveRange.length > 0,

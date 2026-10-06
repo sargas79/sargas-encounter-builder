@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   legacyModuleIsForeign,
   migratePartyProfileRecord,
   migrateRecipeRecord,
   pickLegacyJournalFlags,
+  runMigrations,
+  shouldRunMigrations,
 } from "../src/foundry/migrations.js";
 import { validatePartyProfile, validateRecipe } from "../src/core/schemas.js";
 
@@ -95,5 +97,44 @@ describe("0.2.1: legacy namespace copy ignores the unrelated pf2e-encounter-buil
     ).toEqual({});
     expect(pickLegacyJournalFlags({ dataJournal: true, tags: "garbage" }, undefined)).toEqual({});
     expect(pickLegacyJournalFlags({ foreign: { anything: 1 } }, undefined)).toEqual({});
+  });
+});
+
+describe("migrations run on the active GM only", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("selects the active GM, not every GM", () => {
+    expect(shouldRunMigrations({ user: { id: "a", isGM: false } })).toBe(false);
+    expect(
+      shouldRunMigrations({ user: { id: "a", isGM: true }, users: { activeGM: { id: "a", isSelf: true } } }),
+    ).toBe(true);
+    expect(
+      shouldRunMigrations({ user: { id: "b", isGM: true }, users: { activeGM: { id: "a", isSelf: false } } }),
+    ).toBe(false);
+    // isSelf missing: compare ids.
+    expect(shouldRunMigrations({ user: { id: "a", isGM: true }, users: { activeGM: { id: "a" } } })).toBe(
+      true,
+    );
+    expect(shouldRunMigrations({ user: { id: "b", isGM: true }, users: { activeGM: { id: "a" } } })).toBe(
+      false,
+    );
+  });
+
+  it("falls back to any GM when the core has no activeGM", () => {
+    expect(shouldRunMigrations({ user: { id: "a", isGM: true }, users: {} })).toBe(true);
+    expect(shouldRunMigrations({ user: { id: "a", isGM: true } })).toBe(true);
+  });
+
+  it("returns before touching settings on a secondary GM", async () => {
+    const get = vi.fn(() => 0);
+    vi.stubGlobal("game", {
+      user: { id: "b", isGM: true },
+      users: { activeGM: { id: "a", isSelf: false } },
+      settings: { get, set: vi.fn() },
+    });
+    await runMigrations();
+    expect(get).not.toHaveBeenCalled();
   });
 });

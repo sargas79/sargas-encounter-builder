@@ -1,3 +1,5 @@
+> **Note:** this is the original generation brief used to build the module, not user documentation. See `README.md`.
+
 # Implementation prompt: PF2e Encounter Builder for Foundry VTT
 
 You are a senior Foundry VTT and Pathfinder Second Edition module developer. Implement a complete, usable module from this specification, delivered in the milestones in §12. Do not stop at a design document, mock interface, or pseudocode. Inspect the repository and available Foundry/PF2e sources first, then plan and implement in testable increments.

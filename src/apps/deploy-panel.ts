@@ -10,17 +10,27 @@ import {
   defaultDeploymentOptions,
 } from "../foundry/deployment-service.js";
 import { t } from "../foundry/i18n.js";
+import { confirm } from "./dialogs.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
+import { panelActions, type Panel } from "./panel.js";
 
-export class DeployPanel {
+export class DeployPanel implements Panel {
+  readonly actions: ReadonlySet<string> = panelActions<DeployPanel>(
+    "pickOrigin",
+    "cancelOrigin",
+    "clearOrigin",
+    "deploy",
+    "cleanup",
+  );
   readonly service = new DeploymentService(new FoundryDeploymentGateway());
   options: DeploymentOptions | null = null;
   origin: { x: number; y: number } | null = null;
   pickingOrigin = false;
   busy = false;
   lastOutcome: { ledger: OperationLedger; unplaced: number } | null = null;
-  cleanupDone: { removed: number; failed: number } | null = null;
-  #originHandler: ((event: PointerEvent) => void) | null = null;
+  cleanupDone: { removed: number; failed: number; kept: string[] } | null = null;
+  /** Removes the listeners of an origin pick in progress. */
+  #stopPicking: (() => void) | null = null;
 
   constructor(private readonly app: EncounterBuilderApp) {}
 
@@ -69,8 +79,8 @@ export class DeployPanel {
             failures: ledger.failures.map(
               (f) => `${t(`deploy.stage.${f.stage}`)}: ${f.subject} — ${f.message}`,
             ),
-            created: ledger.created.map((c) => `${c.kind}: ${c.name}`),
-            reused: ledger.reused.map((r) => `${r.kind}: ${r.name}`),
+            created: ledger.created.map((c) => `${kindLabel(c.kind)}: ${c.name}`),
+            reused: ledger.reused.map((r) => `${kindLabel(r.kind)}: ${r.name}`),
             unplaced: this.lastOutcome?.unplaced ?? 0,
             canCleanup: ledger.created.length > 0 && !this.cleanupDone,
             cleanupDone: this.cleanupDone,
@@ -106,7 +116,10 @@ export class DeployPanel {
     return true;
   }
 
-  /** Let the GM click the canvas to choose the placement origin. */
+  /**
+   * Let the GM click the canvas to choose the placement origin. The click is swallowed so it does
+   * not also select or deselect tokens; Escape or the Cancel button abort the pick.
+   */
   async pickOrigin(): Promise<void> {
     if (!canvas?.ready || !canvas.stage) {
       this.app.pushMessage("warn", t("deploy.noCanvas"));
@@ -121,30 +134,57 @@ export class DeployPanel {
     }
     this.cancelPick();
     this.pickingOrigin = true;
-    const handler = (event: PointerEvent) => {
+    const view: EventTarget | null = canvas.app?.view ?? null;
+    const onPointer = (event: PointerEvent) => {
+      // Only clicks on the canvas pick; clicks on windows (e.g. the Cancel button) pass through.
+      if (view ? event.target !== view : !(event.target instanceof HTMLCanvasElement)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      this.cancelPick();
+      // The viewed scene or the selected one may have changed since the pick started.
+      if (canvas?.scene?.id !== this.#options().sceneId) {
+        this.app.pushMessage("warn", t("deploy.viewScene"));
+        void this.app.render({ parts: ["header", "deploy"] });
+        return;
+      }
       const pos =
         canvas.canvasCoordinatesFromClient?.({ x: event.clientX, y: event.clientY }) ??
         canvas.mousePosition ??
         null;
       if (pos) this.origin = { x: pos.x, y: pos.y };
-      this.cancelPick();
       void this.app.render({ parts: ["deploy"] });
     };
-    this.#originHandler = handler;
-    (canvas.app?.view ?? document.body).addEventListener("pointerdown", handler, {
-      once: true,
-      capture: true,
-    });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // Keep Foundry from also closing windows or releasing tokens on this Escape.
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      void this.cancelOrigin();
+    };
+    // Window-level capture runs before the canvas's own listeners, so stopping the event here keeps
+    // it from reaching the token layer at all.
+    window.addEventListener("pointerdown", onPointer, { capture: true });
+    window.addEventListener("keydown", onKey, { capture: true });
+    this.#stopPicking = () => {
+      window.removeEventListener("pointerdown", onPointer, { capture: true });
+      window.removeEventListener("keydown", onKey, { capture: true });
+    };
     await this.app.render({ parts: ["deploy"] });
   }
 
+  /** Abort an origin pick in progress (Cancel button, Escape). */
+  async cancelOrigin(): Promise<void> {
+    if (!this.pickingOrigin) return;
+    this.cancelPick();
+    await this.app.render({ parts: ["deploy"] });
+  }
+
+  /** Remove the pick listeners without rendering. Safe to call when no pick is running. */
   cancelPick(): void {
-    if (this.#originHandler) {
-      (canvas?.app?.view ?? document.body).removeEventListener("pointerdown", this.#originHandler, {
-        capture: true,
-      });
-      this.#originHandler = null;
-    }
+    this.#stopPicking?.();
+    this.#stopPicking = null;
     this.pickingOrigin = false;
   }
 
@@ -175,10 +215,7 @@ export class DeployPanel {
           }),
         );
     } catch (error) {
-      this.app.pushMessage(
-        "error",
-        t("errors.generic", { message: error instanceof Error ? error.message : String(error) }),
-      );
+      this.app.reportError(error);
     } finally {
       this.busy = false;
     }
@@ -187,16 +224,29 @@ export class DeployPanel {
 
   async cleanup(): Promise<void> {
     if (!isGM() || !this.lastOutcome) return;
-    const result = await this.service.cleanup(this.lastOutcome.ledger);
-    this.cleanupDone = { removed: result.removed, failed: result.failed.length };
-    this.app.pushMessage(
-      result.failed.length ? "warn" : "ok",
-      t("deploy.cleanupDone", { removed: result.removed, failed: result.failed.length }),
+    const ok = await confirm(
+      t("deploy.cleanupTitle"),
+      t("deploy.cleanupConfirm", { count: this.lastOutcome.ledger.created.length }),
+      "fa-solid fa-broom",
     );
+    if (!ok) return;
+    const result = await this.service.cleanup(this.lastOutcome.ledger);
+    const kept = result.kept.map(
+      (k) => `${kindLabel(k.kind)}: ${k.name} (${t(`deploy.keptReason.${k.reason}`)})`,
+    );
+    this.cleanupDone = { removed: result.removed, failed: result.failed.length, kept };
+    let message = t("deploy.cleanupDone", { removed: result.removed, failed: result.failed.length });
+    if (kept.length) message += ` ${t("deploy.cleanupKept", { count: kept.length, names: kept.join(", ") })}`;
+    this.app.pushMessage(result.failed.length || kept.length ? "warn" : "ok", message);
     await this.app.render({ parts: ["header", "deploy"] });
   }
 
   dispose(): void {
     this.cancelPick();
   }
+}
+
+/** Localized document type of a ledger line (Actor, Token, Combat, Combatant). */
+function kindLabel(kind: "Actor" | "Token" | "Combat" | "Combatant"): string {
+  return t(`deploy.kind.${kind}`);
 }
