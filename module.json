@@ -10,7 +10,8 @@
     }
   ],
   "compatibility": {
-    "minimum": "14"
+    "minimum": "14",
+    "maximum": "14"
   },
   "relationships": {
     "systems": [
@@ -23,12 +24,8 @@
       }
     ]
   },
-  "esmodules": [
-    "dist/sargas-encounter-builder.js"
-  ],
-  "styles": [
-    "styles/encounter-builder.css"
-  ],
+  "esmodules": ["dist/sargas-encounter-builder.js"],
+  "styles": ["styles/encounter-builder.css"],
   "languages": [
     {
       "lang": "en",

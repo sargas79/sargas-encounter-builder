@@ -1,9 +1,10 @@
 # ORC Notice
 
-> **Verification note:** the ORC License text could not be fetched from this build environment
-> (paizo.com and azoralaw.com were unreachable). The notice below follows the standard ORC Notice form.
-> Before publishing a release, compare it with the current license text at
-> <https://paizo.com/orclicense> and correct any wording differences. See `docs/VERIFICATION.md`.
+> **TODO (maintainer):** the notice wording below was written without access to the official ORC License
+> text (paizo.com and azoralaw.com were unreachable from the build environment). Before the next release,
+> compare the notice paragraph and the Reserved Material / Expressly Designated Licensed Material sections
+> with the official text at <https://paizo.com/orclicense>, correct any differences, then delete this note.
+> Tracked in `docs/VERIFICATION.md` §4 item 7.
 
 This product is licensed under the ORC License located at the Library of Congress at TX 9-307-067
 and available online at various locations including <https://paizo.com/orclicense>,
@@ -17,8 +18,6 @@ This product is based on the following Licensed Material:
 - _Pathfinder GM Core_ © 2023, Paizo Inc. Authors: Logan Bonner, Mark Seifter, Amirali Attar Olyaee,
   Jason Bulmahn, Nathaniel Deming, Jesse Decker, Eleanor Ferron, Tim Hitchcock, Erik Keith, Laura Mohlman,
   Shay Snow, Alex Speidel, and Tabitha Thompson.
-- _Pathfinder Player Core_ © 2023, Paizo Inc. Authors: Logan Bonner, Jason Bulmahn, Stephen Radney-MacFarland,
-  and Mark Seifter.
 
 ## Scope of Licensed Material in this repository
 

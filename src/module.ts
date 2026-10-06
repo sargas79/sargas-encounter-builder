@@ -26,3 +26,11 @@ Hooks.once("ready", async () => {
   const { onReady } = await import("./foundry/bootstrap.js");
   await onReady();
 });
+
+// Quench fires `quenchReady` once its own API is ready (during `ready`); register here at module load so
+// the batches exist before Quench builds its UI, independent of how long our migrations take.
+Hooks.once("quenchReady", async (quench: Quench) => {
+  if (!game.user?.isGM || game.system?.id !== "pf2e") return;
+  const { registerQuenchTests } = await import("./quench/tests.js");
+  registerQuenchTests(quench);
+});

@@ -54,7 +54,7 @@ Foundry package registry, so Foundry's updater fetches the wrong package for it.
 `pf2e-encounter-builder`, install this module from the manifest URL above, and open the world once as GM:
 saved encounters, tags and tables are copied forward automatically.
 
-From source: `npm ci --legacy-peer-deps && npm run build`, then copy `module.json`, `dist/`, `lang/`,
+From source: `npm ci && npm run build`, then copy `module.json`, `dist/`, `lang/`,
 `styles/` and `templates/` into `Data/modules/sargas-encounter-builder/`.
 
 ## Usage
@@ -193,7 +193,8 @@ docs/         VERIFICATION.md, MANUAL-TESTS.md, implementation prompt
 
 ## Compatibility and status
 
-- Unit and mocked tests: `npm test` (191 passing). Lint, typecheck and build: clean.
+- Unit and mocked tests: `npm test`; coverage report (text + `coverage/index.html`): `npm run test:coverage`.
+  Lint, typecheck, format check and build run in CI on every push.
 - Runtime in Foundry: run the Quench batches and `docs/MANUAL-TESTS.md` on your Foundry 14 + PF2e 8
   world, then record versions in `docs/VERIFICATION.md`. `compatibility.verified` is set only after that.
 - Not implemented (no controls shown): hazards, elite/weak adjustments, scheduled regional checks,
