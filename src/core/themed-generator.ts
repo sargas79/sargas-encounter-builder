@@ -139,6 +139,25 @@ export function archetypeConstraints(archetype: Archetype, maxCountCap: number):
   }
 }
 
+/**
+ * Creature count range for the solver. A solo composition (lair) is defined by its count, so the
+ * archetype's range wins and the user's min/max are clamped into it. Otherwise the archetype's own
+ * minimum wins over a user cap that would make the range empty.
+ */
+export function archetypeCountRange(
+  constraints: Pick<ArchetypeConstraints, "composition" | "minCount" | "maxCount">,
+  userMinCount: number | undefined,
+  maxCountCap: number,
+): { minCount: number; maxCount: number } {
+  if (constraints.composition === "solo") {
+    const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+    const minCount = clamp(userMinCount ?? constraints.minCount, constraints.minCount, constraints.maxCount);
+    return { minCount, maxCount: clamp(maxCountCap, minCount, constraints.maxCount) };
+  }
+  const minCount = Math.max(userMinCount ?? 1, constraints.minCount);
+  return { minCount, maxCount: Math.max(minCount, Math.min(maxCountCap, constraints.maxCount)) };
+}
+
 /* -------------------------------------------- */
 /*  Themes available for a candidate set        */
 /* -------------------------------------------- */
@@ -161,6 +180,7 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
   const constraints = archetypeConstraints(archetype, maxCountCap);
   const locked = input.locked ?? [];
   const themesTried: string[] = [];
+  const counts = archetypeCountRange(constraints, input.minCount, maxCountCap);
 
   // Resolve candidate themes.
   let themes: Theme[];
@@ -243,12 +263,8 @@ export function generateThemedEncounter(input: ThemedInput): ThemedResult {
       candidates: pool,
       relativeMin: Math.max(input.relativeMin ?? -4, constraints.relativeMin ?? -4),
       relativeMax: Math.min(input.relativeMax ?? 4, constraints.relativeMax ?? 4),
-      // The archetype's own minimum wins over a user cap that would make the range empty.
-      minCount: Math.max(input.minCount ?? 1, constraints.minCount),
-      maxCount: Math.max(
-        Math.max(input.minCount ?? 1, constraints.minCount),
-        Math.min(maxCountCap, constraints.maxCount),
-      ),
+      minCount: counts.minCount,
+      maxCount: counts.maxCount,
       composition: constraints.composition,
       duplicateCap: constraints.duplicateCap ?? input.duplicateCap ?? 4,
       excludeUuids: input.excludeUuids,

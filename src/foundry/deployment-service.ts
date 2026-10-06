@@ -4,7 +4,8 @@
  *
  * Guarantees:
  *  - compendium documents are never modified
- *  - reuse matches on compendium source identity, never on name
+ *  - reuse matches on compendium source identity, never on name (see `pickReusableActor`)
+ *  - square grids are supported; gridless scenes deploy in pixel units with a warning; hex scenes block
  *  - deployed NPC tokens are always unlinked (independent HP/conditions)
  *  - combat is never started, initiative never rolled, tokens hidden by default
  *  - one in-flight operation at a time
@@ -12,6 +13,7 @@
 import { FLAGS, MODULE_ID, SETTINGS } from "../constants.js";
 import {
   OperationLedger,
+  pickReusableActor,
   planCleanup,
   planDeployment,
   type CleanupWorld,
@@ -22,6 +24,7 @@ import {
 import type { DraftEntry } from "../core/draft.js";
 import { footprintCells, placeTokens, tokenNames, type PlacementRequest } from "../core/placement.js";
 import { documentClass, gridTypes, isGM, randomID } from "./compat.js";
+import { t } from "./i18n.js";
 import { getSetting } from "./settings.js";
 
 /** Port over Foundry so the service can be tested with a mock. */
@@ -90,9 +93,12 @@ export class DeploymentService {
     else {
       const types = gridTypes();
       const type = sceneDoc.grid.type;
+      const gridless = type === types.GRIDLESS;
       const supported = type === types.SQUARE;
-      const gridLabel = type === types.GRIDLESS ? "gridless" : supported ? "square" : "hex";
-      if (!supported) warnings.push("unsupportedGrid");
+      const gridLabel = gridless ? "gridless" : supported ? "square" : "hex";
+      // Placement uses square-cell maths: harmless in pixel units on a gridless scene, wrong on hex cells.
+      if (gridless) warnings.push("unsupportedGrid");
+      else if (!supported) blockers.push("unsupportedGrid");
       scene = { id: sceneDoc.id, name: sceneDoc.name, gridLabel, supported };
     }
     if (plan.totalTokens === 0) blockers.push("nothingToDeploy");
@@ -128,7 +134,11 @@ export class DeploymentService {
     this.#lastLedger = ledger;
     const preview = this.preview(entries, options);
     if (preview.blockers.length > 0) {
-      ledger.fail({ stage: "place", subject: "preflight", message: preview.blockers.join(", ") });
+      ledger.fail({
+        stage: "place",
+        subject: "preflight",
+        message: preview.blockers.map((code) => t(`deploy.blockers.${code}`)).join(" "),
+      });
       ledger.finish();
       return { ledger, placedTokens: [], unplaced: preview.plan.totalTokens };
     }
@@ -166,8 +176,6 @@ export class DeploymentService {
     let unplaced = 0;
     if (resolvedActors.length > 0) {
       const grid = scene.grid;
-      const types = gridTypes();
-      const square = grid.type === types.SQUARE;
       const cell = grid.size;
       const dims = scene.dimensions;
       const bounds = {
@@ -211,24 +219,24 @@ export class DeploymentService {
         ledger.fail({
           stage: "place",
           subject: "placement",
-          message: `${unplaced} token(s) do not fit on the scene near the origin`,
+          message: t("deploy.unplaced", { count: unplaced }),
         });
       } else {
-        const data = placement.placed.map((p) => {
-          const { actor, name } = byId.get(p.id)!;
-          const proto = actor.prototypeToken?.toObject?.() ?? {};
-          return {
-            ...proto,
-            name,
-            actorId: actor.id,
-            actorLink: false,
-            hidden: options.hidden,
-            x: square ? p.j * cell : p.j * cell,
-            y: square ? p.i * cell : p.i * cell,
-            flags: { ...(proto.flags ?? {}), [MODULE_ID]: { [FLAGS.deployment]: ledger.id } },
-          };
-        });
         try {
+          const data: Record<string, unknown>[] = [];
+          for (const p of placement.placed) {
+            const { actor, name } = byId.get(p.id)!;
+            data.push(
+              await tokenData(actor, {
+                name,
+                actorLink: false,
+                hidden: options.hidden,
+                x: p.j * cell,
+                y: p.i * cell,
+                flags: { [MODULE_ID]: { [FLAGS.deployment]: ledger.id } },
+              }),
+            );
+          }
           const tokens = await this.gateway.createTokens(scene, data);
           for (const tk of tokens) {
             ledger.record({ kind: "Token", id: tk.id, uuid: tk.uuid, name: tk.name });
@@ -293,6 +301,34 @@ export class DeploymentService {
   }
 }
 
+/**
+ * Token creation data for one deployed token. Uses `actor.getTokenDocument` when available so the
+ * system and core resolve the prototype (e.g. a random wildcard image per token); otherwise spreads the
+ * prototype token. The overrides (name, position, visibility, unlinked, deployment flag) always win, and
+ * the module's flag scope is replaced by the deployment marker.
+ */
+async function tokenData(
+  actor: ActorDocument,
+  overrides: Record<string, unknown> & { flags: Record<string, unknown> },
+): Promise<Record<string, unknown>> {
+  let base: Record<string, unknown> | null = null;
+  if (typeof actor.getTokenDocument === "function") {
+    try {
+      base = (await actor.getTokenDocument(overrides)).toObject();
+    } catch (error) {
+      console.warn(`${MODULE_ID} | getTokenDocument failed; using the prototype token`, error);
+    }
+  }
+  base ??= actor.prototypeToken?.toObject?.() ?? {};
+  const baseFlags = (base.flags as Record<string, unknown> | undefined) ?? {};
+  return {
+    ...base,
+    ...overrides,
+    actorId: actor.id,
+    flags: { ...baseFlags, ...overrides.flags },
+  };
+}
+
 /* -------------------------------------------- */
 /*  Foundry gateway                             */
 /* -------------------------------------------- */
@@ -304,11 +340,8 @@ export class FoundryDeploymentGateway implements DeploymentGateway {
 
   findReusableActor(sourceUuid: string): ActorDocument | null {
     if (sourceUuid.startsWith("Actor.")) return game.actors.get(sourceUuid.slice("Actor.".length)) ?? null;
-    // Match on compendium source identity only (never name). Prefer the oldest match for stability.
-    const matches = game.actors.filter(
-      (a) => a.type === "npc" && (a._stats?.compendiumSource ?? null) === sourceUuid,
-    );
-    return matches[0] ?? null;
+    // Match on compendium source identity only (never name); see pickReusableActor for the preference order.
+    return pickReusableActor(game.actors.contents, sourceUuid);
   }
 
   async importActor(sourceUuid: string): Promise<ActorDocument> {

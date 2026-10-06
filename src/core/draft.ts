@@ -2,7 +2,13 @@
  * The in-progress encounter ("draft"): creature entries with quantities and locks, plus evaluation
  * against a resolved party. Pure; the app owns an instance and persists it to recipes on save.
  */
-import { evaluateEncounter, inferThreat, type EncounterEvaluation, type ThreatLevel } from "./budget.js";
+import {
+  evaluateEncounter,
+  inferThreat,
+  type EncounterEvaluation,
+  type EvaluatedEntry,
+  type ThreatLevel,
+} from "./budget.js";
 import type { CatalogEntry } from "./catalog.js";
 import type { RecipeEntry } from "./schemas.js";
 
@@ -114,17 +120,28 @@ export function evaluateDraft(draft: Draft, options: EvaluateDraftOptions): Draf
   const probe = helper ? helper(options.referenceLevel, options.referenceLevel) : null;
   if (!helper || probe === null) return { ...base, systemCalculation: false, variantUnsupported: true };
 
-  // Delegate per-creature XP to the system under PWL. The system clamps its own (wider) range,
-  // so there is no "unsupported" state here; completeness is always true.
-  const entries = base.entries.map((entry) => {
-    const xp = helper(options.referenceLevel, entry.level) ?? 0;
+  // Delegate per-creature XP to the system under PWL. The system clamps its own (wider) range;
+  // a creature it still cannot price is reported like an out-of-range creature on the standard
+  // path (no XP, excluded from the total, evaluation incomplete) rather than silently counted as 0.
+  const entries: EvaluatedEntry[] = base.entries.map((entry) => {
+    const xp = helper(options.referenceLevel, entry.level);
+    if (xp === null || !Number.isFinite(xp)) {
+      const status = entry.relativeLevel < 0 ? ("belowRange" as const) : ("aboveRange" as const);
+      return { ...entry, status, xpEach: null, subtotal: null };
+    }
     return { ...entry, status: "supported" as const, xpEach: xp, subtotal: xp * entry.quantity };
   });
+  const belowRange = entries.filter((e) => e.status === "belowRange" && e.quantity > 0);
+  const aboveRange = entries.filter((e) => e.status === "aboveRange" && e.quantity > 0);
   const supportedXP = entries.reduce((s, e) => s + (e.subtotal ?? 0), 0);
   const difference = base.tier && base.tier.available ? supportedXP - base.tier.target : null;
   const warnings = base.warnings.filter(
     (w) => !["incompleteBelowRange", "incompleteAboveRange", "overBudget", "underBudget"].includes(w.code),
   );
+  if (belowRange.length > 0)
+    warnings.push({ code: "incompleteBelowRange", data: { ids: belowRange.map((e) => e.id) } });
+  if (aboveRange.length > 0)
+    warnings.push({ code: "incompleteAboveRange", data: { ids: aboveRange.map((e) => e.id) } });
   if (difference !== null && difference > 0) warnings.push({ code: "overBudget", data: { difference } });
   else if (difference !== null && difference < 0 && !base.tier?.isCeiling)
     warnings.push({ code: "underBudget", data: { difference } });
@@ -132,11 +149,14 @@ export function evaluateDraft(draft: Draft, options: EvaluateDraftOptions): Draf
     ...base,
     entries,
     supportedXP,
-    complete: true,
-    belowRange: [],
-    aboveRange: [],
+    complete: belowRange.length === 0 && aboveRange.length === 0,
+    belowRange,
+    aboveRange,
     difference,
-    inferred: inferThreat(supportedXP, options.partySize),
+    inferred: inferThreat(supportedXP, options.partySize, {
+      hasAboveRange: aboveRange.length > 0,
+      hasBelowRange: belowRange.length > 0,
+    }),
     warnings,
     systemCalculation: true,
     variantUnsupported: false,

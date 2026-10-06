@@ -11,6 +11,7 @@ import {
   xpForRelativeLevel,
 } from "../src/core/budget.js";
 import { THREAT_LEVELS } from "../src/rules/encounter-tables.js";
+import { emptyDraft, evaluateDraft, type Draft } from "../src/core/draft.js";
 
 describe("T1: four same-level PCs yield standard budgets", () => {
   it.each([
@@ -165,6 +166,16 @@ describe("T6: small parties and invalid budgets", () => {
     expect(tierBudget("moderate", 9).largeParty).toBe(true);
     expect(tierBudget("moderate", 8).largeParty).toBe(false);
   });
+
+  it("emits the largeParty warning with or without a selected threat", () => {
+    const codes = (selectedThreat: "moderate" | null, partySize: number) =>
+      evaluateEncounter({ partySize, referenceLevel: 3, selectedThreat, entries: [] }).warnings.map(
+        (w) => w.code,
+      );
+    expect(codes(null, 9)).toContain("largeParty");
+    expect(codes("moderate", 9).filter((c) => c === "largeParty")).toHaveLength(1);
+    expect(codes(null, 8)).not.toContain("largeParty");
+  });
 });
 
 describe("T7: inferred threat algorithm", () => {
@@ -244,5 +255,55 @@ describe("reference level policies", () => {
 
   it("returns null with no levels", () => {
     expect(resolveReferenceLevel([], "highest")).toMatchObject({ level: null, requiresChoice: false });
+  });
+});
+
+describe("evaluateDraft under Proficiency Without Level", () => {
+  const draft = (levels: number[]): Draft => ({
+    ...emptyDraft(),
+    entries: levels.map((level, i) => ({
+      uuid: `Compendium.p.Actor.c${i}`,
+      name: `C${i}`,
+      level,
+      quantity: 1,
+      locked: false,
+      img: null,
+      packLabel: null,
+      traits: [],
+    })),
+  });
+  // A system helper that prices relative levels -6..+6 and refuses anything else.
+  const helper = (ref: number, lvl: number) => (Math.abs(lvl - ref) <= 6 ? 40 + (lvl - ref) * 10 : null);
+
+  it("delegates per-creature XP to the system and stays complete when everything is priced", () => {
+    const ev = evaluateDraft(draft([5, 10]), {
+      partySize: 4,
+      referenceLevel: 5,
+      selectedThreat: "moderate",
+      pwol: true,
+      pwolCreatureXP: helper,
+    });
+    expect(ev.systemCalculation).toBe(true);
+    expect(ev.complete).toBe(true);
+    expect(ev.supportedXP).toBe(40 + 90);
+  });
+
+  it("marks creatures the system cannot price as unsupported instead of counting 0 XP", () => {
+    const ev = evaluateDraft(draft([12, 20, 0]), {
+      partySize: 4,
+      referenceLevel: 12,
+      selectedThreat: "moderate",
+      pwol: true,
+      pwolCreatureXP: helper,
+    });
+    expect(ev.complete).toBe(false);
+    expect(ev.supportedXP).toBe(40);
+    expect(ev.aboveRange.map((e) => e.level)).toEqual([20]);
+    expect(ev.belowRange.map((e) => e.level)).toEqual([0]);
+    expect(ev.entries.find((e) => e.level === 20)).toMatchObject({ xpEach: null, subtotal: null });
+    expect(ev.warnings.map((w) => w.code)).toEqual(
+      expect.arrayContaining(["incompleteAboveRange", "incompleteBelowRange"]),
+    );
+    expect(ev.inferred.unquantified).toBe(true);
   });
 });

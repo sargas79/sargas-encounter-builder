@@ -3,6 +3,7 @@
  * through a `DeploymentGateway` (Foundry) and this module tracks what was created so partial
  * failures can be reported exactly and cleaned up safely.
  */
+import { FLAGS, MODULE_ID } from "../constants.js";
 import type { DraftEntry } from "./draft.js";
 
 export type ImportPolicy = "reuse" | "fresh";
@@ -43,6 +44,69 @@ export function planDeployment(
       reuseActorUuid: options.importPolicy === "reuse" ? reuse(e.uuid) : null,
     }));
   return { options, actors, totalTokens: actors.reduce((n, a) => n + a.quantity, 0) };
+}
+
+/* -------------------------------------------- */
+/*  Reusable world actors                       */
+/* -------------------------------------------- */
+
+/** The plain actor data the reuse matcher reads. Foundry Actor documents satisfy it structurally. */
+export interface ReuseCandidateData {
+  type: string;
+  _stats?: {
+    compendiumSource?: string | null;
+    duplicateSource?: string | null;
+    createdTime?: number | null;
+  } | null;
+  flags?: Record<string, unknown> | null;
+}
+
+function flagObject(flags: ReuseCandidateData["flags"], scope: string): Record<string, unknown> | null {
+  const value = flags?.[scope];
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+/** Compendium source identity of a world actor: `_stats.compendiumSource`, else legacy `flags.core.sourceId`. */
+function sourceMatches(actor: ReuseCandidateData, sourceUuid: string): boolean {
+  if ((actor._stats?.compendiumSource ?? null) === sourceUuid) return true;
+  return flagObject(actor.flags, "core")?.sourceId === sourceUuid;
+}
+
+/** True when this module imported the actor (deployment sets `flags[MODULE_ID].importedFrom`). */
+function importedByModule(actor: ReuseCandidateData, sourceUuid: string): boolean {
+  const imported = flagObject(actor.flags, MODULE_ID)?.[FLAGS.importedFrom];
+  if (!imported || typeof imported !== "object") return false;
+  const uuid = (imported as { uuid?: unknown }).uuid;
+  return uuid === undefined || uuid === sourceUuid;
+}
+
+/**
+ * World NPC actors that may stand in for a compendium creature, best first. Matches on source identity
+ * only (never name): `_stats.compendiumSource` or `flags.core.sourceId`. Sidebar duplicates (which keep
+ * the source but carry `_stats.duplicateSource`) are excluded. Actors this module imported come first,
+ * then the oldest by `_stats.createdTime`; ties keep collection order.
+ */
+export function rankReusableActors<T extends ReuseCandidateData>(
+  actors: Iterable<T>,
+  sourceUuid: string,
+): T[] {
+  const created = (a: T) => {
+    const time = a._stats?.createdTime;
+    return typeof time === "number" && Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+  };
+  return [...actors]
+    .filter((a) => a.type === "npc" && !a._stats?.duplicateSource && sourceMatches(a, sourceUuid))
+    .map((actor, index) => ({ actor, index, own: importedByModule(actor, sourceUuid) ? 0 : 1 }))
+    .sort((a, b) => a.own - b.own || created(a.actor) - created(b.actor) || a.index - b.index)
+    .map((x) => x.actor);
+}
+
+/** The single world actor deployment reuses for a compendium source, or null. */
+export function pickReusableActor<T extends ReuseCandidateData>(
+  actors: Iterable<T>,
+  sourceUuid: string,
+): T | null {
+  return rankReusableActors(actors, sourceUuid)[0] ?? null;
 }
 
 /* -------------------------------------------- */

@@ -2,6 +2,7 @@
  * PF2eAdapter: the only place PF2e data paths appear.
  * Every accessor is documented in docs/VERIFICATION.md §2.
  */
+import { rankReusableActors } from "../core/deployment.js";
 import type { ActorSummary } from "../core/party.js";
 
 /** Ports used by services, so they can be unit tested with mocks. */
@@ -104,11 +105,8 @@ export class PF2eAdapter implements ActorResolver {
     return helper.total(partyLevel, 4, [creatureLevel], true);
   }
 
-  /** World NPC actors whose compendium source matches, for reuse-on-import. */
+  /** World NPC actors whose compendium source matches, for reuse-on-import (best first; same rule as deployment). */
   worldActorsFromSource(sourceUuid: string): ActorDocument[] {
-    return game.actors.filter((a) => {
-      const source = a._stats?.compendiumSource ?? a.sourceId ?? null;
-      return a.type === "npc" && source === sourceUuid;
-    });
+    return rankReusableActors(game.actors.contents, sourceUuid);
   }
 }

@@ -557,13 +557,14 @@
       "worldActor": "world actor",
       "freshImport": "import fresh copy",
       "warnings": {
-        "unsupportedGrid": "This scene is not a square grid: tokens are placed on a square spiral in pixel units; check positions.",
+        "unsupportedGrid": "This scene is gridless: tokens are placed on a square spiral in pixel units; check positions.",
         "unknownSource": "An entry has an unrecognized source UUID.",
         "someFresh": "Some creatures have no matching world actor and will be imported."
       },
       "blockers": {
         "noScene": "Select a scene.",
-        "nothingToDeploy": "The encounter has no creatures."
+        "nothingToDeploy": "The encounter has no creatures.",
+        "unsupportedGrid": "Hex-grid scenes are not supported: tokens would land off their cells. Use a square or gridless scene."
       },
       "stage": {
         "import": "Import",
@@ -678,7 +679,15 @@
       "levelDiffers": "Budget read at level {level} while the party is level {party}: item slots and value follow the chosen level.",
       "fewerPCs": "{count} below four: −{per} gp each",
       "indexing": "Indexing the equipment compendium…",
-      "staleDraft": "This hoard was rolled for a different encounter. Reroll before saving or deploying it."
+      "staleDraft": "This hoard was rolled for a different encounter. Reroll before saving or deploying it.",
+      "card": {
+        "speaker": "Encounter Builder",
+        "budget": "Level {level}, party of {partySize}, {percent}% of a level: {total} budget.",
+        "itemDetail": "level {level}, {price}",
+        "noItems": "No items.",
+        "coins": "Coins:",
+        "totals": "Items {items} · currency {currency}"
+      }
     }
   }
 }

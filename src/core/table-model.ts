@@ -98,22 +98,32 @@ export function validateTable(model: TableModel, context: ValidationContext = {}
     const [lo, hi] = row.range;
     if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo > hi)
       issues.push({ level: "error", code: "rangeInvalid", rowId: row.id, data: { range: row.range } });
-    if (model.mode === "weight" && row.weight <= 0)
-      issues.push({ level: "warning", code: "weightZero", rowId: row.id });
+    // Weights are floored when ranges are derived (see rangesFromWeights), so 0 < weight < 1 is
+    // just as unreachable as 0.
+    if (model.mode === "weight" && !(Math.floor(row.weight) >= 1))
+      issues.push({ level: "warning", code: "weightZero", rowId: row.id, data: { weight: row.weight } });
   }
+  let maxEnd = -Infinity;
   if (model.mode === "range" && formula.ok) {
-    for (let i = 1; i < rows.length; i++) {
-      const prev = rows[i - 1]!;
-      const cur = rows[i]!;
-      if (cur.range[0] <= prev.range[1])
-        issues.push({ level: "error", code: "rangeOverlap", rowId: cur.id, data: { with: prev.id } });
-      else if (cur.range[0] > prev.range[1] + 1)
-        issues.push({
-          level: "warning",
-          code: "rangeGap",
-          rowId: cur.id,
-          data: { from: prev.range[1] + 1, to: cur.range[0] - 1 },
-        });
+    // Rows are sorted by start; compare each against the furthest end seen so far, so a wide row
+    // that covers several later rows is detected as overlapping all of them.
+    let maxEndId: string | null = null;
+    for (const cur of rows) {
+      if (maxEndId !== null) {
+        if (cur.range[0] <= maxEnd)
+          issues.push({ level: "error", code: "rangeOverlap", rowId: cur.id, data: { with: maxEndId } });
+        else if (cur.range[0] > maxEnd + 1)
+          issues.push({
+            level: "warning",
+            code: "rangeGap",
+            rowId: cur.id,
+            data: { from: maxEnd + 1, to: cur.range[0] - 1 },
+          });
+      }
+      if (maxEndId === null || cur.range[1] > maxEnd) {
+        maxEnd = cur.range[1];
+        maxEndId = cur.id;
+      }
     }
     for (const row of rows) {
       if (row.range[0] < formula.min! || row.range[1] > formula.max!)
@@ -130,11 +140,11 @@ export function validateTable(model: TableModel, context: ValidationContext = {}
         code: "rangeGap",
         data: { from: formula.min, to: rows[0]!.range[0] - 1 },
       });
-    if (rows.length > 0 && rows[rows.length - 1]!.range[1] < formula.max!)
+    if (rows.length > 0 && maxEnd < formula.max!)
       issues.push({
         level: "warning",
         code: "rangeGap",
-        data: { from: rows[rows.length - 1]!.range[1] + 1, to: formula.max },
+        data: { from: maxEnd + 1, to: formula.max },
       });
   }
 

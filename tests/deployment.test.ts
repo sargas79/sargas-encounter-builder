@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { OperationLedger, planCleanup, planDeployment, type CreatedRecord } from "../src/core/deployment.js";
+import {
+  OperationLedger,
+  pickReusableActor,
+  planCleanup,
+  planDeployment,
+  rankReusableActors,
+  type CreatedRecord,
+  type ReuseCandidateData,
+} from "../src/core/deployment.js";
 import { footprintCells, placeTokens, spiral, tokenNames } from "../src/core/placement.js";
 import { DeploymentService, type DeploymentGateway } from "../src/foundry/deployment-service.js";
 import type { DraftEntry } from "../src/core/draft.js";
@@ -33,6 +41,7 @@ interface FakeActor {
     toObject(): Record<string, unknown>;
   };
   hp: number;
+  getTokenDocument?: (data: Record<string, unknown>) => Promise<{ toObject(): Record<string, unknown> }>;
 }
 
 class FakeGateway implements DeploymentGateway {
@@ -507,5 +516,183 @@ describe("T23: partial failures are reported exactly and cleanup removes only op
     );
     expect(plan.totalTokens).toBe(5);
     expect(plan.actors).toHaveLength(2);
+  });
+});
+
+describe("grid support", () => {
+  const options = {
+    sceneId: "scene1",
+    importPolicy: "reuse" as const,
+    hidden: true,
+    addToCombat: "none" as const,
+    numberDuplicates: true,
+  };
+
+  it.each([
+    [2, "hex"],
+    [4, "hex"],
+  ])("refuses to deploy on grid type %i (%s)", async (type, label) => {
+    const gateway = new FakeGateway();
+    gateway.scene.grid.type = type;
+    const service = new DeploymentService(gateway);
+    const preview = service.preview([entry("Compendium.p.Actor.wolf", "Wolf", 2)], options);
+    expect(preview.blockers).toContain("unsupportedGrid");
+    expect(preview.warnings).not.toContain("unsupportedGrid");
+    expect(preview.scene).toMatchObject({ gridLabel: label, supported: false });
+    const outcome = await service.deploy([entry("Compendium.p.Actor.wolf", "Wolf", 2)], options, null);
+    expect(gateway.tokens).toHaveLength(0);
+    expect(gateway.importCount).toBe(0);
+    expect(outcome.unplaced).toBe(2);
+    expect(outcome.ledger.failures).toEqual([
+      {
+        stage: "place",
+        subject: "preflight",
+        message: "sargas-encounter-builder.deploy.blockers.unsupportedGrid",
+      },
+    ]);
+  });
+
+  it("deploys on gridless scenes with a warning", () => {
+    const gateway = new FakeGateway();
+    gateway.scene.grid.type = 0;
+    const preview = new DeploymentService(gateway).preview(
+      [entry("Compendium.p.Actor.wolf", "Wolf", 1)],
+      options,
+    );
+    expect(preview.blockers).toEqual([]);
+    expect(preview.warnings).toContain("unsupportedGrid");
+    expect(preview.scene).toMatchObject({ gridLabel: "gridless", supported: false });
+  });
+
+  it("deploys on square grids without a grid warning", () => {
+    const preview = new DeploymentService(new FakeGateway()).preview(
+      [entry("Compendium.p.Actor.wolf", "Wolf", 1)],
+      options,
+    );
+    expect(preview.blockers).toEqual([]);
+    expect(preview.warnings).not.toContain("unsupportedGrid");
+  });
+});
+
+describe("localized ledger messages", () => {
+  it("reports tokens that do not fit with a localized message", async () => {
+    (g.game as Record<string, unknown>).i18n = {
+      localize: (key: string) => `L:${key}`,
+      format: (key: string, data: Record<string, unknown>) => `F:${key}:${JSON.stringify(data)}`,
+    };
+    const gateway = new FakeGateway();
+    gateway.scene.dimensions = { sceneX: 0, sceneY: 0, sceneWidth: 200, sceneHeight: 200 };
+    const outcome = await new DeploymentService(gateway).deploy(
+      [entry("Compendium.p.Actor.wolf", "Wolf", 9)],
+      { sceneId: "scene1", importPolicy: "reuse", hidden: true, addToCombat: "none", numberDuplicates: true },
+      null,
+    );
+    expect(outcome.unplaced).toBeGreaterThan(0);
+    expect(outcome.ledger.failures).toEqual([
+      {
+        stage: "place",
+        subject: "placement",
+        message: `F:sargas-encounter-builder.deploy.unplaced:{"count":${outcome.unplaced}}`,
+      },
+    ]);
+  });
+
+  it("localizes preflight blockers instead of joining raw codes", async () => {
+    (g.game as Record<string, unknown>).i18n = { localize: (key: string) => `L:${key}`, format: () => "" };
+    const outcome = await new DeploymentService(new FakeGateway()).deploy(
+      [],
+      { sceneId: "nope", importPolicy: "reuse", hidden: true, addToCombat: "none", numberDuplicates: true },
+      null,
+    );
+    expect(outcome.ledger.failures[0]?.message).toBe(
+      "L:sargas-encounter-builder.deploy.blockers.noScene L:sargas-encounter-builder.deploy.blockers.nothingToDeploy",
+    );
+  });
+});
+
+describe("token data from actor.getTokenDocument", () => {
+  it("uses getTokenDocument when available (random wildcard images) and keeps the deployment overrides", async () => {
+    const gateway = new FakeGateway();
+    const calls: Record<string, unknown>[] = [];
+    let n = 0;
+    gateway.worldActors.push({
+      id: "w1",
+      uuid: "Actor.w1",
+      name: "Wolf",
+      type: "npc",
+      _stats: { compendiumSource: "Compendium.p.Actor.wolf" },
+      prototypeToken: {
+        name: "Wolf",
+        width: 1,
+        height: 1,
+        actorLink: true,
+        toObject: () => ({ texture: { src: "wolf-*.webp" }, randomImg: true }),
+      },
+      hp: 1,
+      getTokenDocument: async (data: Record<string, unknown>) => {
+        calls.push(data);
+        n++;
+        return {
+          toObject: () => ({
+            name: "Wolf",
+            actorId: "w1",
+            actorLink: true,
+            hidden: false,
+            texture: { src: `wolf-${n}.webp` },
+            flags: { other: { keep: 1 }, "sargas-encounter-builder": { stale: true } },
+          }),
+        };
+      },
+    } as FakeActor);
+    await new DeploymentService(gateway).deploy(
+      [entry("Compendium.p.Actor.wolf", "Wolf", 2)],
+      { sceneId: "scene1", importPolicy: "reuse", hidden: true, addToCombat: "none", numberDuplicates: true },
+      { x: 500, y: 500 },
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({ name: "Wolf 1", actorLink: false, hidden: true });
+    expect(gateway.tokens.map((tk) => (tk.texture as { src: string }).src)).toEqual([
+      "wolf-1.webp",
+      "wolf-2.webp",
+    ]);
+    for (const tk of gateway.tokens) {
+      expect(tk).toMatchObject({ actorId: "w1", actorLink: false, hidden: true });
+      const flags = tk.flags as Record<string, Record<string, unknown>>;
+      expect(flags.other).toEqual({ keep: 1 });
+      expect(Object.keys(flags["sargas-encounter-builder"]!)).toEqual(["deployment"]);
+    }
+    expect(new Set(gateway.tokens.map((tk) => `${tk.x},${tk.y}`)).size).toBe(2);
+  });
+});
+
+describe("reusable actor matching", () => {
+  const SRC = "Compendium.pf2e.pathfinder-bestiary.Actor.wolf";
+  const actor = (
+    id: string,
+    extra: Partial<ReuseCandidateData> & { _stats?: ReuseCandidateData["_stats"] } = {},
+  ): ReuseCandidateData & { id: string } => ({ id, type: "npc", _stats: {}, flags: {}, ...extra });
+
+  it("matches compendiumSource or legacy flags.core.sourceId, never anything else", () => {
+    const actors = [
+      actor("a", { _stats: { compendiumSource: SRC, createdTime: 30 } }),
+      actor("b", { flags: { core: { sourceId: SRC } }, _stats: { createdTime: 20 } }),
+      actor("c", { _stats: { compendiumSource: "Compendium.other" } }),
+      actor("d", { type: "character", _stats: { compendiumSource: SRC } }),
+    ];
+    expect(rankReusableActors(actors, SRC).map((a) => a.id)).toEqual(["b", "a"]);
+  });
+
+  it("excludes sidebar duplicates, prefers module imports, then the oldest", () => {
+    const imported = { "sargas-encounter-builder": { importedFrom: { uuid: SRC, at: 1 } } };
+    const actors = [
+      actor("dup", { _stats: { compendiumSource: SRC, duplicateSource: "Actor.own", createdTime: 1 } }),
+      actor("old", { _stats: { compendiumSource: SRC, createdTime: 5 } }),
+      actor("own-new", { _stats: { compendiumSource: SRC, createdTime: 50 }, flags: imported }),
+      actor("own", { _stats: { compendiumSource: SRC, createdTime: 10 }, flags: imported }),
+      actor("undated", { _stats: { compendiumSource: SRC } }),
+    ];
+    expect(rankReusableActors(actors, SRC).map((a) => a.id)).toEqual(["own", "own-new", "old", "undated"]);
+    expect(pickReusableActor(actors, SRC)?.id).toBe("own");
+    expect(pickReusableActor([], SRC)).toBeNull();
   });
 });

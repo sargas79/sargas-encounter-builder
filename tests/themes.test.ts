@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { compositionSatisfied, generateEncounter, hardConstraintViolations } from "../src/core/generator.js";
 import { mulberry32 } from "../src/core/rng.js";
 import {
+  archetypeConstraints,
+  archetypeCountRange,
   availableThemes,
   generateThemedEncounter,
   type ThemedCandidate,
@@ -575,5 +577,41 @@ describe("themed generation keeps the best fit instead of the first success", ()
       expect(strict.fit).toBe("under");
       expect(strict.outsider).toBeNull();
     }
+  });
+});
+
+describe("lair archetype respects its solo count range", () => {
+  it("clamps a user minimum above 1 into the archetype's range instead of failing", () => {
+    const candidates = [c("drake", 7, ["dragon"]), c("drake-2", 6, ["dragon"])];
+    for (const minCount of [1, 2, 3]) {
+      const result = generateThemedEncounter({
+        threat: "moderate",
+        partySize: 4,
+        referenceLevel: 5,
+        candidates,
+        theme: "auto:dragon",
+        archetype: "lair",
+        minCount,
+        maxCount: 6,
+        rng: mulberry32(minCount),
+      });
+      expect(result.ok, `minCount ${minCount}`).toBe(true);
+      if (!result.ok) continue;
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0]!.quantity).toBe(1);
+    }
+  });
+
+  it("archetypeCountRange: solo wins, other compositions keep the archetype minimum", () => {
+    expect(archetypeCountRange(archetypeConstraints("lair", 8), 3, 8)).toEqual({ minCount: 1, maxCount: 1 });
+    expect(archetypeCountRange(archetypeConstraints("lair", 8), undefined, 8)).toEqual({
+      minCount: 1,
+      maxCount: 1,
+    });
+    expect(archetypeCountRange(archetypeConstraints("warband", 8), 1, 8)).toEqual({
+      minCount: 3,
+      maxCount: 6,
+    });
+    expect(archetypeCountRange(archetypeConstraints("any", 2), 4, 2)).toEqual({ minCount: 4, maxCount: 4 });
   });
 });

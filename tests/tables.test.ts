@@ -128,6 +128,21 @@ describe("dice grammar", () => {
     expect(validateFormula("999d6").ok).toBe(false);
   });
 
+  it("does not join tokens across whitespace", () => {
+    expect(validateFormula("1 2d6").ok).toBe(false);
+    expect(validateFormula("2 d6").ok).toBe(false);
+    expect(validateFormula("1d 6").ok).toBe(false);
+    expect(validateFormula("1 0").ok).toBe(false);
+    expect(validateFormula(" 2d6 + 1 ")).toEqual({ ok: true, min: 3, max: 13 });
+    expect(validateFormula("( 1d3 + 2 ) * 2")).toEqual({ ok: true, min: 6, max: 10 });
+    expect(evaluateFormula(" 1d4 +\t1 ", () => 0)).toBe(2);
+  });
+
+  it("leaves unary minus unsupported", () => {
+    expect(validateFormula("-1").ok).toBe(false);
+    expect(validateFormula("2*-1").ok).toBe(false);
+  });
+
   it("evaluates deterministically with a seeded RNG within bounds", () => {
     const rng = () => 0.999;
     expect(evaluateFormula("1d4+1", rng)).toBe(5);
@@ -518,6 +533,54 @@ describe("review fixes", () => {
     const issues = validateTable(table("RollTable.w0", "1d3", rows, { mode: "weight" }));
     expect(issues.some((i) => i.code === "rangeInvalid")).toBe(false);
     expect(issues.some((i) => i.code === "weightZero" && i.level === "warning")).toBe(true);
+  });
+
+  it("weight mode: a fractional weight below 1 floors to 0 and is warned about", () => {
+    const rows = [
+      row("a", [0, 0], { kind: "none" }, { weight: 2 }),
+      row("half", [0, 0], { kind: "none" }, { weight: 0.5 }),
+      row("ok", [0, 0], { kind: "none" }, { weight: 1.5 }),
+    ];
+    expect(rangesFromWeights(rows).map((r) => r.range)).toEqual([
+      [1, 2],
+      [0, 0],
+      [3, 3],
+    ]);
+    const issues = validateTable(table("RollTable.wf", "1d3", rows, { mode: "weight" }));
+    expect(issues.filter((i) => i.code === "weightZero").map((i) => i.rowId)).toEqual(["half"]);
+  });
+
+  it("range mode: overlap is detected against the widest earlier row, not just the neighbour", () => {
+    const t = table("RollTable.ov", "1d10", [
+      row("wide", [1, 10], { kind: "none" }),
+      row("b", [2, 3], { kind: "none" }),
+      row("c", [5, 6], { kind: "none" }),
+    ]);
+    const issues = validateTable(t);
+    expect(issues.filter((i) => i.code === "rangeGap")).toEqual([]);
+    expect(issues.filter((i) => i.code === "rangeOverlap").map((i) => [i.rowId, i.data?.with])).toEqual([
+      ["b", "wide"],
+      ["c", "wide"],
+    ]);
+  });
+
+  it("range mode: gaps are measured from the furthest end seen so far", () => {
+    const t = table("RollTable.gp", "1d10", [
+      row("a", [1, 6], { kind: "none" }),
+      row("b", [2, 3], { kind: "none" }),
+      row("c", [9, 10], { kind: "none" }),
+    ]);
+    const gaps = validateTable(t).filter((i) => i.code === "rangeGap");
+    expect(gaps).toEqual([expect.objectContaining({ rowId: "c", data: { from: 7, to: 8 } })]);
+  });
+
+  it("range mode: a trailing gap uses the furthest end, not the last row's end", () => {
+    const t = table("RollTable.tg", "1d10", [
+      row("a", [1, 10], { kind: "none" }),
+      row("b", [2, 3], { kind: "none" }),
+    ]);
+    const issues = validateTable(t);
+    expect(issues.some((i) => i.code === "rangeGap")).toBe(false);
   });
 });
 
