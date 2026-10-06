@@ -130,6 +130,21 @@ describe("T8: search and add use indexes only, never importing or loading docume
     expect(p.documentCalls).toEqual([]);
   });
 
+  it("bumps its version when entries, tags or the selection change, not on cached searches", async () => {
+    const catalog = new CreatureCatalog(provider(), undefined, memoryPacks(["world.beasts"]));
+    const v0 = catalog.version;
+    await catalog.search({});
+    const v1 = catalog.version;
+    expect(v1).toBeGreaterThan(v0);
+    await catalog.search({ search: "bog" });
+    expect(catalog.version).toBe(v1);
+    catalog.retag();
+    expect(catalog.version).toBeGreaterThan(v1);
+    const v2 = catalog.version;
+    await catalog.setSelectedPacks(["world.beasts"]);
+    expect(catalog.version).toBeGreaterThan(v2);
+  });
+
   it("only loadDocument touches full documents", async () => {
     const p = provider();
     const catalog = new CreatureCatalog(p, undefined, memoryPacks(["world.beasts"]));

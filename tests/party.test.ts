@@ -274,3 +274,61 @@ describe("T4: mixed levels, no active PCs, missing PCs, invalid reference levels
     expect(profile.members).toEqual([{ uuid: "Actor.a", active: false }]);
   });
 });
+
+describe("actor change notifications are limited to the party", () => {
+  it("ignores updates to actors outside every profile (combat HP changes)", async () => {
+    const actors = new Map([["Actor.a", summary("Actor.a", 4)]]);
+    const service = new PartyService(new FakeResolver(actors), new MemoryStore(), () => "p1");
+    const profile = await service.createProfile("Solo", "standalone");
+    await service.addMember(profile.id, "Actor.a");
+    let changes = 0;
+    service.onChange(() => changes++);
+
+    service.handleActorChange("Actor.goblin", { system: { attributes: { hp: { value: 3 } } } });
+    service.handleActorChange("Scene.s.Token.t.Actor.goblin", {
+      system: { attributes: { hp: { value: 2 } } },
+    });
+    service.handleActorChange("Actor.goblin", undefined, { actorType: "npc" });
+    expect(changes).toBe(0);
+
+    service.handleActorChange("Actor.a", { system: { attributes: { hp: { value: 3 } } } });
+    expect(changes).toBe(1);
+    service.handleActorChange("Actor.a", undefined, { actorType: "character" });
+    expect(changes).toBe(2);
+  });
+
+  it("emits for the linked Party actor and the members read from it", async () => {
+    const actors = new Map([
+      ["Actor.a", summary("Actor.a", 6)],
+      ["Actor.b", summary("Actor.b", 6)],
+    ]);
+    const resolver = new FakeResolver(actors, new Map([["Actor.party", ["Actor.a"]]]));
+    const service = new PartyService(resolver, new MemoryStore(), () => "linked");
+    const profile = await service.createProfile("Linked", "linked", "Actor.party");
+    await service.resolve(profile);
+    let changes = 0;
+    service.onChange(() => changes++);
+
+    service.handleActorChange("Actor.b", { system: {} });
+    expect(changes).toBe(0);
+    service.handleActorChange("Actor.a", { system: {} });
+    expect(changes).toBe(1);
+    // A member joins the Party actor: its update is relevant, and so is the new member afterwards.
+    resolver.partyMembers.set("Actor.party", ["Actor.a", "Actor.b"]);
+    service.handleActorChange("Actor.party", { system: { details: { members: [] } } });
+    expect(changes).toBe(2);
+    await service.resolve(service.getProfile("linked")!);
+    service.handleActorChange("Actor.b", { system: {} });
+    expect(changes).toBe(3);
+  });
+
+  it("emits when a Party actor is created or deleted (the linkable list changes)", () => {
+    const service = new PartyService(new FakeResolver(new Map()), new MemoryStore());
+    let changes = 0;
+    service.onChange(() => changes++);
+    service.handleActorChange("Actor.newParty", undefined, { actorType: "party" });
+    expect(changes).toBe(1);
+    service.handleActorChange("Actor.newParty", { system: {} });
+    expect(changes).toBe(1);
+  });
+});

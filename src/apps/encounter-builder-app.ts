@@ -140,6 +140,9 @@ export class EncounterBuilderApp extends Base {
   activeTab: TabId = "build";
   #unsubscribe: (() => void)[] = [];
   #listenersAttached = false;
+  #catalogMuted = 0;
+  /** Serialised party data last rendered, so unrelated actor updates do not repaint the window. */
+  #partySignature = "";
   #search = debounce(() => void this.#runSearch(), 250);
   extensions: Record<string, unknown> = {
     generator: new GeneratorPanel(this),
@@ -165,7 +168,8 @@ export class EncounterBuilderApp extends Base {
     }
     const app = (EncounterBuilderApp.#instance ??= new EncounterBuilderApp());
     if (withDialog) {
-      const choice = await app.runStartDialog();
+      // The render below covers the choice; letting the dialog render too paints the window twice.
+      const choice = await app.runStartDialog({ render: false });
       if (!choice) return app.rendered ? app : null;
     }
     // All data work happens before render(): ApplicationV2 serialises render/close through a
@@ -183,7 +187,7 @@ export class EncounterBuilderApp extends Base {
   /*  Start dialog                                */
   /* -------------------------------------------- */
 
-  async runStartDialog(): Promise<StartChoice | null> {
+  async runStartDialog({ render = true }: { render?: boolean } = {}): Promise<StartChoice | null> {
     const { party, adapter } = services();
     const ui = this.#uiState();
     const active = party.activeProfile();
@@ -206,11 +210,11 @@ export class EncounterBuilderApp extends Base {
       },
     });
     if (!choice) return null;
-    await this.applyStartChoice(choice);
+    await this.applyStartChoice(choice, { render });
     return choice;
   }
 
-  async applyStartChoice(choice: StartChoice): Promise<void> {
+  async applyStartChoice(choice: StartChoice, { render = true }: { render?: boolean } = {}): Promise<void> {
     const { party, adapter } = services();
     let profile = null as import("../core/schemas.js").PartyProfile | null;
     if (choice.party.startsWith("actor:")) {
@@ -249,7 +253,8 @@ export class EncounterBuilderApp extends Base {
         break;
     }
     if (profile.kind === "standalone" && profile.members.length === 0) this.activeTab = "party";
-    await this.refreshParty();
+    if (render) await this.refreshParty();
+    else await this.#resolveParty();
   }
 
   #uiState(): UiState {
@@ -281,18 +286,20 @@ export class EncounterBuilderApp extends Base {
       console.error(`${MODULE_ID} | default pack selection failed`, error);
     }
     await this.#resolveParty();
+    // Search now so the first render already lists results instead of re-rendering Build after it.
+    await this.#searchResults();
   }
 
   async _onFirstRender(context: Record<string, unknown>, options: Record<string, unknown>): Promise<void> {
     await super._onFirstRender?.(context, options);
     const { party, catalog } = services();
-    const rerender = debounce(() => void this.refreshParty(), 150);
-    const rerenderCatalog = debounce(() => {
-      if (this.rendered) void this.render({ parts: ["build", "footer"] });
-    }, 150);
-    this.#unsubscribe.push(party.onChange(rerender), catalog.onChange(rerenderCatalog));
-    // Not awaited: the render it ends with must queue behind this one, not block it.
-    void this.#runSearch();
+    const rerender = debounce(() => void this.refreshParty({ onlyIfChanged: true }), 150);
+    // Catalog changes (pack selection, index reloads, tags) re-run the debounced search, which
+    // renders Build once. Actions that search right after changing the catalog mute this.
+    const onCatalog = () => {
+      if (this.#catalogMuted === 0) this.#search();
+    };
+    this.#unsubscribe.push(party.onChange(rerender), catalog.onChange(onCatalog));
   }
 
   _onClose(options: Record<string, unknown>): void {
@@ -314,6 +321,20 @@ export class EncounterBuilderApp extends Base {
       root.addEventListener("change", (event) => void this.#onChange(event));
       root.addEventListener("input", (event) => this.#onInput(event));
       root.addEventListener("keydown", (event) => this.#onKeydown(event));
+      // Drop-zone highlight, delegated once. Capture phase: the DragDrop drop handler may stop
+      // propagation. Moving between a zone's children fires dragleave on the zone, so only clear
+      // the highlight when the pointer really left it.
+      root.addEventListener("dragenter", (event) => dropzoneOf(event)?.classList.add("is-over"), true);
+      root.addEventListener(
+        "dragleave",
+        (event) => {
+          const zone = dropzoneOf(event);
+          const next = event.relatedTarget as Node | null;
+          if (zone && !(next && zone.contains(next))) zone.classList.remove("is-over");
+        },
+        true,
+      );
+      root.addEventListener("drop", (event) => dropzoneOf(event)?.classList.remove("is-over"), true);
       this.#listenersAttached = true;
     }
     try {
@@ -328,11 +349,6 @@ export class EncounterBuilderApp extends Base {
     } catch (error) {
       console.error(`${MODULE_ID} | drag-drop binding failed`, error);
     }
-    for (const el of root.querySelectorAll<HTMLElement>(".seb-dropzone")) {
-      el.addEventListener("dragenter", () => el.classList.add("is-over"));
-      el.addEventListener("dragleave", () => el.classList.remove("is-over"));
-      el.addEventListener("drop", () => el.classList.remove("is-over"));
-    }
   }
 
   /* -------------------------------------------- */
@@ -345,16 +361,29 @@ export class EncounterBuilderApp extends Base {
   }
 
   async #resolveParty(): Promise<void> {
-    const { party } = services();
+    const { party, adapter } = services();
     this.state.resolved = await party.resolveActive();
+    this.#partySignature = partySignature(this.state.resolved, party.profiles(), adapter.listPartyActors());
     this.recomputeEvaluation();
     if (!this.ready && GATED_TABS.includes(this.activeTab)) this.activeTab = "party";
   }
 
-  async refreshParty(): Promise<void> {
+  /**
+   * Re-resolve the active party and repaint what depends on it. With `onlyIfChanged` (actor and
+   * profile change events) nothing renders when the party data is the same as last time.
+   */
+  async refreshParty({ onlyIfChanged = false }: { onlyIfChanged?: boolean } = {}): Promise<void> {
+    const previousRef = this.state.resolved?.roster.reference.level ?? null;
+    const previous = this.#partySignature;
     await this.#resolveParty();
-    if (this.rendered)
-      await this.render({ parts: ["header", "tabs", "party", "build", "treasure", "deploy", "footer"] });
+    if (onlyIfChanged && this.#partySignature === previous) return;
+    // Relative-level filters are applied against the reference level.
+    if ((this.state.resolved?.roster.reference.level ?? null) !== previousRef) await this.#searchResults();
+    if (!this.rendered) return;
+    // Every panel depends on the roster, but hidden tabs re-render when shown (#onSelectTab), so
+    // only the visible one is painted now.
+    const parts = new Set<string>(["header", "tabs", "party", this.activeTab, "footer"]);
+    await this.render({ parts: [...parts] });
   }
 
   recomputeEvaluation(): void {
@@ -418,7 +447,8 @@ export class EncounterBuilderApp extends Base {
     this.state.messages = [...this.state.messages.slice(-2), { level, text }];
   }
 
-  async #runSearch(): Promise<void> {
+  /** Query the catalog into `state.results`. Never renders. */
+  async #searchResults(): Promise<void> {
     const { catalog } = services();
     const ref = this.state.resolved?.roster.reference.level ?? null;
     try {
@@ -430,11 +460,27 @@ export class EncounterBuilderApp extends Base {
       console.error(`${MODULE_ID} | search failed`, error);
       this.state.results = [];
     }
+  }
+
+  async #runSearch(): Promise<void> {
+    await this.#searchResults();
     if (!this.rendered) return;
     // Re-rendering the part while the GM is typing replaces the search box under the caret, which
     // drops keystrokes and breaks dead-key/IME input. Patch the list in place instead.
-    if (this.#searchHasFocus()) await this.#patchCatalogList();
-    else await this.render({ parts: ["build"] });
+    if (this.#searchHasFocus()) {
+      await this.#patchCatalogList();
+      await this.render({ parts: ["footer"] });
+    } else await this.render({ parts: ["build", "footer"] });
+  }
+
+  /** Run a catalog mutation without the change event's own search; the caller searches after. */
+  async #muteCatalog<T>(fn: () => Promise<T> | T): Promise<T> {
+    this.#catalogMuted++;
+    try {
+      return await fn();
+    } finally {
+      this.#catalogMuted--;
+    }
   }
 
   #searchHasFocus(): boolean {
@@ -472,15 +518,73 @@ export class EncounterBuilderApp extends Base {
   /*  Context                                     */
   /* -------------------------------------------- */
 
+  /** Context every part may use. Panel data is built per part in `_preparePartContext`. */
   async _prepareContext(options: Record<string, unknown>): Promise<Record<string, unknown>> {
     const base = (await super._prepareContext?.(options)) ?? {};
-    const { party, catalog, adapter } = services();
-    const resolved = this.state.resolved;
-    const roster = resolved?.roster ?? null;
-    const evaluation = this.state.evaluation;
-    const ready = this.ready;
+    const roster = this.state.resolved?.roster ?? null;
+    return {
+      ...base,
+      activeTab: this.activeTab,
+      isGM: isGM(),
+      ready: this.ready,
+      busy: this.state.busy,
+      messages: this.state.messages,
+      gate: {
+        title: t("gate.title"),
+        hint: roster
+          ? roster.blockers.map((code) => t(`party.blockers.${code}`)).join(" ")
+          : t("gate.noParty"),
+      },
+    };
+  }
 
-    const tabs = TABS.map((id) => ({
+  /**
+   * Build only the data the part being rendered uses: a render of ["header"] must not run the
+   * generator's theme derivation, the deploy preview or the saved-encounter list.
+   */
+  async _preparePartContext(
+    partId: string,
+    context: Record<string, unknown>,
+    options: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const ctx: Record<string, unknown> =
+      (await super._preparePartContext?.(partId, context, options)) ?? context;
+    switch (partId) {
+      case "header":
+        ctx.header = this.#headerContext(
+          this.state.resolved,
+          this.state.evaluation,
+          services().adapter.variantInfo().pwol,
+        );
+        break;
+      case "tabs":
+        ctx.tabs = this.#tabsContext();
+        break;
+      case "party":
+        ctx.party = this.#partyContext();
+        break;
+      case "build":
+        ctx.build = this.#buildContext();
+        ctx.generator = await this.#extensionContext("generator");
+        break;
+      case "footer":
+        ctx.footer = this.#footerContext();
+        break;
+      default:
+        if (partId in this.extensions) ctx[partId] = await this.#extensionContext(partId);
+    }
+    return ctx;
+  }
+
+  async #extensionContext(key: string): Promise<Record<string, unknown> | undefined> {
+    const ext = this.extensions[key] as
+      { prepareContext?: () => Promise<Record<string, unknown>> } | undefined;
+    return ext?.prepareContext ? await ext.prepareContext() : undefined;
+  }
+
+  #tabsContext(): Record<string, unknown>[] {
+    const ready = this.ready;
+    return TABS.map((id) => ({
       id,
       label: t(`tabs.${id}`),
       icon: TAB_ICONS[id],
@@ -488,104 +592,96 @@ export class EncounterBuilderApp extends Base {
       disabled: GATED_TABS.includes(id) && !ready,
       tooltip: GATED_TABS.includes(id) && !ready ? t("gate.tooltip") : "",
     }));
+  }
 
+  #partyContext(): Record<string, unknown> {
+    const { party, adapter } = services();
+    const resolved = this.state.resolved;
+    const roster = resolved?.roster ?? null;
+    return {
+      profiles: party.profiles().map((p) => ({
+        ...p,
+        selected: p.id === resolved?.profile.id,
+        kindLabel: t(`party.kind.${p.kind}`),
+        count: p.members.length,
+      })),
+      profile: resolved?.profile ?? null,
+      isLinked: resolved?.profile.kind === "linked",
+      partyActors: adapter.listPartyActors(),
+      roster: roster ? this.#rosterContext(roster) : null,
+      policies: (["averageFloor", "highest", "lowest", "manual"] as ReferenceLevelPolicy[]).map((value) => ({
+        value,
+        label: t(`party.policy.${value}`),
+        selected: resolved?.profile.referencePolicy === value,
+      })),
+      showPolicy: !!roster && roster.reference.distinctLevels.length > 1,
+      manualLevel: resolved?.profile.manualReferenceLevel ?? "",
+      isManual: resolved?.profile.referencePolicy === "manual",
+      blockers: roster?.blockers.map((code) => t(`party.blockers.${code}`)) ?? [],
+    };
+  }
+
+  #buildContext(): Record<string, unknown> {
+    const { catalog } = services();
+    const evaluation = this.state.evaluation;
     const selectedPacks = new Set(catalog.selectedPackIds());
     const packs = catalog.availablePacks().map((p) => ({
       ...p,
       selected: selectedPacks.has(p.id),
       stateLabel: describePackState(catalog.packState(p.id)),
     }));
-
     return {
-      ...base,
-      tabs,
-      activeTab: this.activeTab,
-      isGM: isGM(),
-      ready,
-      busy: this.state.busy,
-      messages: this.state.messages,
-      header: this.#headerContext(resolved, evaluation, adapter.variantInfo().pwol),
-      gate: {
-        title: t("gate.title"),
-        hint: roster
-          ? roster.blockers.map((code) => t(`party.blockers.${code}`)).join(" ")
-          : t("gate.noParty"),
-      },
-      party: {
-        profiles: party.profiles().map((p) => ({
-          ...p,
-          selected: p.id === resolved?.profile.id,
-          kindLabel: t(`party.kind.${p.kind}`),
-          count: p.members.length,
-        })),
-        profile: resolved?.profile ?? null,
-        isLinked: resolved?.profile.kind === "linked",
-        partyActors: adapter.listPartyActors(),
-        roster: roster ? this.#rosterContext(roster) : null,
-        policies: (["averageFloor", "highest", "lowest", "manual"] as ReferenceLevelPolicy[]).map(
-          (value) => ({
-            value,
-            label: t(`party.policy.${value}`),
-            selected: resolved?.profile.referencePolicy === value,
-          }),
-        ),
-        showPolicy: !!roster && roster.reference.distinctLevels.length > 1,
-        manualLevel: resolved?.profile.manualReferenceLevel ?? "",
-        isManual: resolved?.profile.referencePolicy === "manual",
-        blockers: roster?.blockers.map((code) => t(`party.blockers.${code}`)) ?? [],
-      },
-      build: {
-        mode: this.state.buildMode,
-        isBrowse: this.state.buildMode === "browse",
-        isGenerate: this.state.buildMode === "generate",
-        filter: this.state.filter,
-        results: this.#resultsContext(),
-        resultCount: this.state.results.length,
-        draft: this.state.draft.entries.map((entry) => {
-          const ev = evaluation?.entries.find((e) => e.id === entry.uuid);
-          return {
-            ...entry,
-            xpEach: ev?.xpEach ?? null,
-            subtotal: ev?.subtotal ?? null,
-            status: ev?.status ?? "supported",
-            relative: ev ? signed(ev.relativeLevel) : "",
-            statusLabel: ev && ev.status !== "supported" ? t(`evaluation.status.${ev.status}`) : "",
-          };
-        }),
-        draftCount: totalCreatures(this.state.draft),
-        hasDraft: this.state.draft.entries.length > 0,
-        originLabel: t(`saved.origin.${this.state.draft.origin}`),
-        meter: evaluation ? meterContext(evaluation) : null,
-        packs,
-        packCount: selectedPacks.size,
-        missingPacks: catalog.missingSelectedPackIds(),
-        noPacks: selectedPacks.size === 0,
-        traits: this.state.filter.traits?.join(", ") ?? "",
-        tags: this.state.filter.tags?.join(", ") ?? "",
-        rarity: this.state.filter.rarities?.[0] ?? "",
-        rarities: ["", "common", "uncommon", "rare", "unique"].map((value) => ({
-          value,
-          label: value ? t(`rarity.${value}`) : t("build.anyRarity"),
-          active: (this.state.filter.rarities?.[0] ?? "") === value,
-        })),
-        allTags: services().tags.allTags(),
-      },
-      footer: {
-        packCount: selectedPacks.size,
-        catalogCount: catalog.entries().length,
-        version: game.modules.get(MODULE_ID)?.version ?? "",
-      },
-      ...(await this.#extensionContext()),
+      mode: this.state.buildMode,
+      isBrowse: this.state.buildMode === "browse",
+      isGenerate: this.state.buildMode === "generate",
+      filter: this.state.filter,
+      results: this.#resultsContext(),
+      resultCount: this.state.results.length,
+      draft: this.state.draft.entries.map((entry) => {
+        const ev = evaluation?.entries.find((e) => e.id === entry.uuid);
+        return {
+          ...entry,
+          xpEach: ev?.xpEach ?? null,
+          subtotal: ev?.subtotal ?? null,
+          status: ev?.status ?? "supported",
+          relative: ev ? signed(ev.relativeLevel) : "",
+          statusLabel: ev && ev.status !== "supported" ? t(`evaluation.status.${ev.status}`) : "",
+        };
+      }),
+      ...this.#draftSummary(),
+      meter: evaluation ? meterContext(evaluation) : null,
+      packs,
+      packCount: selectedPacks.size,
+      missingPacks: catalog.missingSelectedPackIds(),
+      noPacks: selectedPacks.size === 0,
+      traits: this.state.filter.traits?.join(", ") ?? "",
+      tags: this.state.filter.tags?.join(", ") ?? "",
+      rarity: this.state.filter.rarities?.[0] ?? "",
+      rarities: ["", "common", "uncommon", "rare", "unique"].map((value) => ({
+        value,
+        label: value ? t(`rarity.${value}`) : t("build.anyRarity"),
+        active: (this.state.filter.rarities?.[0] ?? "") === value,
+      })),
+      allTags: services().tags.allTags(),
     };
   }
 
-  async #extensionContext(): Promise<Record<string, unknown>> {
-    const out: Record<string, unknown> = {};
-    for (const [key, ext] of Object.entries(this.extensions)) {
-      const fn = (ext as { prepareContext?: () => Promise<Record<string, unknown>> }).prepareContext;
-      if (fn) out[key] = await fn.call(ext);
-    }
-    return out;
+  #draftSummary(): { draftCount: number; hasDraft: boolean; originLabel: string } {
+    return {
+      draftCount: totalCreatures(this.state.draft),
+      hasDraft: this.state.draft.entries.length > 0,
+      originLabel: t(`saved.origin.${this.state.draft.origin}`),
+    };
+  }
+
+  #footerContext(): Record<string, unknown> {
+    const { catalog } = services();
+    return {
+      packCount: catalog.selectedPackIds().length,
+      catalogCount: catalog.entries().length,
+      version: game.modules.get(MODULE_ID)?.version ?? "",
+      ...this.#draftSummary(),
+    };
   }
 
   #headerContext(
@@ -729,8 +825,8 @@ export class EncounterBuilderApp extends Base {
         const selected = new Set(catalog.selectedPackIds());
         if ((target as HTMLInputElement).checked) selected.add(id);
         else selected.delete(id);
+        // The catalog change event runs the (debounced) search and renders Build once.
         await catalog.setSelectedPacks([...selected]);
-        this.#search();
         return;
       }
       default: {
@@ -1031,8 +1127,10 @@ export class EncounterBuilderApp extends Base {
     try {
       services().tags.invalidate();
       services().themes.invalidate();
-      await services().catalog.refresh();
-      services().catalog.retag();
+      await this.#muteCatalog(async () => {
+        await services().catalog.refresh();
+        services().catalog.retag();
+      });
     } finally {
       this.state.busy = false;
     }
@@ -1053,8 +1151,11 @@ export class EncounterBuilderApp extends Base {
     const text = await promptText(t("build.tagsTitle"), t("build.tagsLabel"), current);
     if (text === null) return;
     const { parseTagText } = await import("../core/catalog.js");
-    await tags.setTags(uuid, parseTagText(text));
-    catalog.retag();
+    // Writing the tag store also fires the data-journal hook, which retags and emits.
+    await this.#muteCatalog(async () => {
+      await tags.setTags(uuid, parseTagText(text));
+      catalog.retag();
+    });
     await this.#runSearch();
   }
 }
@@ -1084,6 +1185,24 @@ export async function ensurePartials(): Promise<void> {
   if (partialsLoaded) return;
   await loadTemplates([...PARTIALS, `modules/${MODULE_ID}/templates/start-dialog.hbs`]);
   partialsLoaded = true;
+}
+
+/** The drop zone a drag event is over, if any (events are delegated from the app root). */
+function dropzoneOf(event: Event): HTMLElement | null {
+  const target = event.target;
+  return target instanceof Element ? target.closest<HTMLElement>(".seb-dropzone") : null;
+}
+
+/**
+ * Everything party-related the workspace displays: the resolved roster, the profile list and the
+ * linkable Party actors. Equal signatures mean a re-render would paint the same party data.
+ */
+export function partySignature(
+  resolved: ResolvedParty | null,
+  profiles: unknown[],
+  partyActors: { uuid: string; name: string }[],
+): string {
+  return JSON.stringify([resolved, profiles, partyActors]);
 }
 
 function signed(n: number): string {

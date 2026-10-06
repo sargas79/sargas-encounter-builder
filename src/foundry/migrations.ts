@@ -1,6 +1,6 @@
 /**
- * Schema migration runner. Runs on `ready` for GMs only, is idempotent, preserves unknown fields,
- * and logs a single summary line.
+ * Schema migration runner. Runs on `ready` on the active GM's client only, is idempotent,
+ * preserves unknown fields, and logs a single summary line.
  *
  * Data locations:
  *  - party profiles: world setting (array)
@@ -207,8 +207,25 @@ const MIGRATIONS: MigrationStep[] = [
   },
 ];
 
+interface MigrationGameView {
+  user?: { id?: string; isGM?: boolean } | null;
+  users?: { activeGM?: { id?: string; isSelf?: boolean } | null } | null;
+}
+
+/**
+ * Only one client may migrate: the designated active GM (`game.users.activeGM`), so two GMs
+ * connecting together do not run the same steps twice. Cores without `activeGM` fall back to
+ * any GM.
+ */
+export function shouldRunMigrations(view: MigrationGameView): boolean {
+  if (!view.user?.isGM) return false;
+  const activeGM = view.users?.activeGM;
+  if (activeGM == null) return true;
+  return activeGM.isSelf ?? (!!activeGM.id && activeGM.id === view.user.id);
+}
+
 export async function runMigrations(): Promise<void> {
-  if (!game.user.isGM) return;
+  if (!shouldRunMigrations(game as unknown as MigrationGameView)) return;
   const stored = Number(getSetting<number>(SETTINGS.dataSchemaVersion) ?? 0);
   if (stored >= CURRENT_DATA_VERSION) return;
 

@@ -74,6 +74,7 @@ export class CreatureCatalog {
   #hookIds: number[] = [];
   #listeners = new Set<() => void>();
   #documentLoads = 0;
+  #version = 0;
 
   constructor(
     private readonly provider: PackProvider,
@@ -165,6 +166,7 @@ export class CreatureCatalog {
           message: error instanceof Error ? error.message : String(error),
         });
       }
+      this.#version++;
     })();
     this.#loading.set(packId, promise);
     try {
@@ -249,6 +251,14 @@ export class CreatureCatalog {
     return this.#documentLoads;
   }
 
+  /**
+   * Monotonic stamp bumped whenever the loaded entries, their tags or the pack selection change
+   * through this catalog. Lets callers key derived caches without re-running a search.
+   */
+  get version(): number {
+    return this.#version;
+  }
+
   /* ---------------------------- events ------------------------------ */
 
   onChange(listener: () => void): () => void {
@@ -257,6 +267,7 @@ export class CreatureCatalog {
   }
 
   #emit(): void {
+    this.#version++;
     for (const l of this.#listeners) l();
   }
 

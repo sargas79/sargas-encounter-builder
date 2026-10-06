@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.6
+
+Performance, stability and rules edge cases:
+
+- Combat updates to creatures outside the party no longer refresh the builder or wipe fields you are typing in.
+- Only the panels being shown are prepared and redrawn; opening the builder, toggling packs and the first
+  render no longer draw the window twice.
+- Custom tags and themes pick up edits from other GMs or tabs, saving no longer overwrites them, and two
+  simultaneous first saves no longer create two data journals.
+- Drop-zone highlighting no longer flickers or stacks listeners.
+- Data migrations run only on the active GM's client.
+- Generator level and count fields show the corrected value immediately; a minimum above the maximum moves
+  the other bound.
+- Dice formulas no longer join numbers across spaces ("1 2d6" is an error, not 12d6).
+- Tables report overlaps hidden behind a wide row (1–10 with 5–6) without false gaps, and warn on weights
+  below 1, which can never be rolled.
+- With Proficiency Without Level, creatures the system cannot price are flagged and the evaluation is marked
+  incomplete instead of counting 0 XP.
+- The large-party warning appears without a selected threat.
+- The Lair archetype no longer fails when the minimum count is above 1.
+- Treasure can fall back to level-0 items for low-level slots.
+- Deployment refuses hex-grid scenes (gridless still deploys with a warning).
+- Reusing world actors ignores sidebar duplicates, prefers actors the module imported, then the oldest, and
+  also matches legacy `flags.core.sourceId`.
+- Deployed tokens are built through the actor's token document, so wildcard token images work.
+- "Add to actor" merges coins into the actor's existing coins.
+- Deployment failures and the GM treasure chat card are localized.
+
 ## 0.3.5
 
 Correctness and data-safety fixes from a full review:
