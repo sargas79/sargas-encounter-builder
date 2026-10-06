@@ -3,7 +3,7 @@
  * apply the classic result to the draft, run a party-scaled template, or create a balanced variant.
  */
 import { evaluateEncounter } from "../core/budget.js";
-import { toRecipeEntries, type Draft, type DraftEntry } from "../core/draft.js";
+import { entryFromCatalog, toRecipeEntries, type Draft } from "../core/draft.js";
 import { generateEncounter } from "../core/generator.js";
 import { rngFromSeed } from "../core/rng.js";
 import type { TraceEvent } from "../core/table-model.js";
@@ -13,11 +13,22 @@ import { t } from "../foundry/i18n.js";
 import { services } from "../foundry/services.js";
 import { createEncounterTable, tableToModel } from "../foundry/table-flags.js";
 import { listEncounterTables, rollEncounterTable, type TableRollReport } from "../foundry/table-resolver.js";
-import type { EncounterBuilderApp } from "./encounter-builder-app.js";
 import { randomHexSeed } from "../core/util.js";
-import { promptText } from "./encounter-builder-app.js";
+import { promptText } from "./dialogs.js";
+import type { EncounterBuilderApp } from "./encounter-builder-app.js";
+import { panelActions, type Panel } from "./panel.js";
+import { inferredThreatLabel } from "./view-models.js";
 
-export class TablesPanel {
+export class TablesPanel implements Panel {
+  readonly actions: ReadonlySet<string> = panelActions<TablesPanel>(
+    "roll",
+    "applyClassic",
+    "applyTemplate",
+    "createVariant",
+    "openEditor",
+    "createTable",
+    "validate",
+  );
   selectedUuid: string | null = null;
   report: TableRollReport | null = null;
   busy = false;
@@ -27,20 +38,13 @@ export class TablesPanel {
   async prepareContext(): Promise<Record<string, unknown>> {
     const tables = listEncounterTables().map((tb) => ({ ...tb, selected: tb.uuid === this.selectedUuid }));
     const report = this.report;
-    const resolved = this.app.state.resolved;
-    const roster = resolved?.roster;
+    const party = this.app.readyParty;
     let classicEvaluation: Record<string, unknown> | null = null;
-    if (
-      report &&
-      roster &&
-      roster.blockers.length === 0 &&
-      roster.reference.level !== null &&
-      report.outcome.creatures.length
-    ) {
+    if (report && party && report.outcome.creatures.length) {
       const evaluation = evaluateEncounter({
-        partySize: roster.partySize,
-        referenceLevel: roster.reference.level,
-        selectedThreat: resolved!.profile.selectedThreat,
+        partySize: party.roster.partySize,
+        referenceLevel: party.referenceLevel,
+        selectedThreat: party.resolved.profile.selectedThreat,
         entries: report.outcome.creatures.map((c) => ({
           id: c.uuid,
           name: c.name,
@@ -52,11 +56,7 @@ export class TablesPanel {
       classicEvaluation = {
         supportedXP: evaluation.supportedXP,
         complete: evaluation.complete,
-        inferredLabel:
-          (inferred.label === "beyondExtreme"
-            ? t("evaluation.beyondExtreme")
-            : t(`threat.${inferred.label}`)) +
-          (inferred.unquantified ? ` ${t("evaluation.unquantified")}` : ""),
+        inferredLabel: inferredThreatLabel(inferred.label, inferred.unquantified),
         warnings: evaluation.warnings.map((w) => t(`evaluation.warnings.${w.code}`, w.data)),
       };
     }
@@ -117,10 +117,7 @@ export class TablesPanel {
     try {
       this.report = await rollEncounterTable(this.selectedUuid);
     } catch (error) {
-      this.app.pushMessage(
-        "error",
-        t("errors.generic", { message: error instanceof Error ? error.message : String(error) }),
-      );
+      this.app.reportError(error);
     } finally {
       this.busy = false;
     }
@@ -131,16 +128,9 @@ export class TablesPanel {
   async applyClassic(): Promise<void> {
     const report = this.report;
     if (!report || report.outcome.creatures.length === 0) return;
-    const entries: DraftEntry[] = report.outcome.creatures.map((c) => ({
-      uuid: c.uuid,
-      name: c.name,
-      level: c.level ?? 0,
-      quantity: c.quantity,
-      locked: false,
-      img: c.img,
-      packLabel: c.packLabel,
-      traits: c.traits,
-    }));
+    const entries = report.outcome.creatures.map((c) =>
+      entryFromCatalog({ ...c, level: c.level ?? 0 }, c.quantity),
+    );
     const draft: Draft = { entries, origin: "table", trace: serializeReport(report) };
     this.app.setDraft(draft);
     this.app.pushMessage(
@@ -155,16 +145,8 @@ export class TablesPanel {
   async applyTemplate(): Promise<void> {
     const report = this.report;
     const template = report?.outcome.templates[0];
-    const resolved = this.app.state.resolved;
-    const roster = resolved?.roster;
-    if (
-      !report ||
-      !template ||
-      !resolved ||
-      !roster ||
-      roster.blockers.length > 0 ||
-      roster.reference.level === null
-    ) {
+    const party = this.app.readyParty;
+    if (!report || !template || !party) {
       this.app.pushMessage("warn", t(template ? "evaluation.blocked" : "tables.noTemplate"));
       await this.app.render({ parts: ["header", "tables"] });
       return;
@@ -178,9 +160,9 @@ export class TablesPanel {
       candidates = await catalog.search({ traits: tp.traits });
     const seed = randomHexSeed();
     const result = generateEncounter({
-      threat: tp.threat ?? resolved.profile.selectedThreat,
-      partySize: roster.partySize,
-      referenceLevel: roster.reference.level,
+      threat: tp.threat ?? party.resolved.profile.selectedThreat,
+      partySize: party.roster.partySize,
+      referenceLevel: party.referenceLevel,
       candidates: candidates.map((c) => ({
         uuid: c.uuid,
         name: c.name,
@@ -199,16 +181,7 @@ export class TablesPanel {
       await this.app.render({ parts: ["header", "tables"] });
       return;
     }
-    const entries: DraftEntry[] = result.entries.map((e) => ({
-      uuid: e.uuid,
-      name: e.name,
-      level: e.level,
-      quantity: e.quantity,
-      locked: false,
-      img: e.img,
-      packLabel: e.packLabel,
-      traits: e.traits,
-    }));
+    const entries = result.entries.map((e) => entryFromCatalog(e, e.quantity));
     this.app.setDraft({
       entries,
       origin: "table",
@@ -230,16 +203,8 @@ export class TablesPanel {
   /** Create a balanced variant of the classic result, keeping the original and recording the diff. */
   async createVariant(): Promise<void> {
     const report = this.report;
-    const resolved = this.app.state.resolved;
-    const roster = resolved?.roster;
-    if (
-      !report ||
-      report.outcome.creatures.length === 0 ||
-      !resolved ||
-      !roster ||
-      roster.blockers.length > 0 ||
-      roster.reference.level === null
-    ) {
+    const party = this.app.readyParty;
+    if (!report || report.outcome.creatures.length === 0 || !party) {
       this.app.pushMessage("warn", t("evaluation.blocked"));
       await this.app.render({ parts: ["header", "tables"] });
       return;
@@ -261,9 +226,9 @@ export class TablesPanel {
     }));
     const seed = randomHexSeed();
     const result = generateEncounter({
-      threat: resolved.profile.selectedThreat,
-      partySize: roster.partySize,
-      referenceLevel: roster.reference.level,
+      threat: party.resolved.profile.selectedThreat,
+      partySize: party.roster.partySize,
+      referenceLevel: party.referenceLevel,
       candidates: pool,
       duplicateCap: 8,
       maxCount: 12,
@@ -277,16 +242,7 @@ export class TablesPanel {
       await this.app.render({ parts: ["header", "tables"] });
       return;
     }
-    const entries: DraftEntry[] = result.entries.map((e) => ({
-      uuid: e.uuid,
-      name: e.name,
-      level: e.level,
-      quantity: e.quantity,
-      locked: false,
-      img: e.img,
-      packLabel: e.packLabel,
-      traits: e.traits,
-    }));
+    const entries = result.entries.map((e) => entryFromCatalog(e, e.quantity));
     const draft: Draft = {
       entries,
       origin: "variant",

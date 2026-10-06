@@ -34,7 +34,7 @@ import { t } from "../foundry/i18n.js";
 import { services } from "../foundry/services.js";
 import { saveTable, tableToModel, type RowEdit } from "../foundry/table-flags.js";
 import { escapeHtml, splitList } from "../core/util.js";
-import { confirm } from "./encounter-builder-app.js";
+import { confirm } from "./dialogs.js";
 
 const Base = HandlebarsApplicationMixin()(ApplicationV2()) as any;
 

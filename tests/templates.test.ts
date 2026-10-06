@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import Handlebars from "handlebars";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 /**
  * ApplicationV2 renders each PART into exactly one root element and throws otherwise. Every part
@@ -67,4 +67,90 @@ describe("ApplicationV2 parts render a single root element", () => {
       expect(rootCount(template({}))).toBe(1);
     });
   }
+});
+
+/**
+ * Every `data-action` in the markup must name a registered ApplicationV2 action, and every
+ * `data-action="ext"` button must name a panel and a method on that panel's whitelist.
+ */
+interface ActionUse {
+  file: string;
+  action: string;
+  ext?: string;
+  method?: string;
+}
+
+function actionUses(files: string[]): ActionUse[] {
+  const uses: ActionUse[] = [];
+  for (const file of files) {
+    for (const [tag] of readFileSync(file, "utf8").matchAll(/<[a-zA-Z][^<>]*\bdata-action="[^"]*"[^<>]*>/g)) {
+      const attr = (name: string) => new RegExp(`\\bdata-${name}="([^"]*)"`).exec(tag)?.[1];
+      uses.push({ file, action: attr("action")!, ext: attr("ext"), method: attr("method") });
+    }
+  }
+  return uses;
+}
+
+describe("template actions resolve", () => {
+  const builderFiles = readdirSync("templates/builder")
+    .filter((f) => f.endsWith(".hbs"))
+    .map((f) => join("templates/builder", f));
+
+  async function loadApps() {
+    class FakeApplication {}
+    vi.stubGlobal("foundry", {
+      applications: {
+        api: { ApplicationV2: FakeApplication, HandlebarsApplicationMixin: (base: unknown) => base },
+      },
+    });
+    const { EncounterBuilderApp } = await import("../src/apps/encounter-builder-app.js");
+    const { EncounterTableEditor } = await import("../src/apps/table-editor-app.js");
+    return { EncounterBuilderApp, EncounterTableEditor };
+  }
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("builder templates use registered actions and whitelisted panel methods", async () => {
+    const { EncounterBuilderApp } = await loadApps();
+    const registered = Object.keys(EncounterBuilderApp.DEFAULT_OPTIONS.actions);
+    const app = new EncounterBuilderApp() as unknown as {
+      panels: Record<string, { actions?: ReadonlySet<string> } & Record<string, unknown>>;
+    };
+    const uses = actionUses(builderFiles);
+    // The tag pattern must not skip any attribute (e.g. a tag with a stray `>` in a helper).
+    const raw = builderFiles.reduce(
+      (n, f) => n + readFileSync(f, "utf8").split('data-action="').length - 1,
+      0,
+    );
+    expect(uses.length).toBe(raw);
+    for (const use of uses) {
+      expect(registered, `${use.file}: ${use.action}`).toContain(use.action);
+      if (use.action !== "ext") continue;
+      const label = `${use.file}: ${use.ext}.${use.method}`;
+      expect(use.ext && use.method, label).toBeTruthy();
+      const panel = app.panels[use.ext!];
+      expect(panel, label).toBeDefined();
+      expect(panel!.actions?.has(use.method!), label).toBe(true);
+      expect(typeof panel![use.method!], label).toBe("function");
+    }
+  });
+
+  it("panel whitelists exclude lifecycle members", async () => {
+    const { EncounterBuilderApp } = await loadApps();
+    const app = new EncounterBuilderApp() as unknown as {
+      panels: Record<string, { actions?: ReadonlySet<string> }>;
+    };
+    const lifecycle = ["prepareContext", "onChange", "onDrop", "onTabShown", "onDraftReplaced", "dispose"];
+    for (const panel of Object.values(app.panels))
+      for (const name of lifecycle) expect(panel.actions?.has(name) ?? false).toBe(false);
+  });
+
+  it("table editor template uses registered actions", async () => {
+    const { EncounterTableEditor } = await loadApps();
+    const registered = Object.keys(EncounterTableEditor.DEFAULT_OPTIONS.actions);
+    for (const use of actionUses(["templates/table-editor.hbs"]))
+      expect(registered, `${use.file}: ${use.action}`).toContain(use.action);
+  });
 });

@@ -36,7 +36,13 @@ export function emptyDraft(): Draft {
   return { entries: [], origin: "manual" };
 }
 
-export function entryFromCatalog(entry: CatalogEntry, quantity = 1): DraftEntry {
+/** What a draft entry needs from a catalog entry, generator result, table roll or world actor. */
+export type DraftEntrySource = Pick<CatalogEntry, "uuid" | "name" | "level" | "img" | "traits"> & {
+  packLabel: string | null;
+};
+
+/** A new unlocked draft entry from any creature source. */
+export function entryFromCatalog(entry: DraftEntrySource, quantity = 1): DraftEntry {
   return {
     uuid: entry.uuid,
     name: entry.name,

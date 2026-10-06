@@ -10,9 +10,17 @@ import {
   defaultDeploymentOptions,
 } from "../foundry/deployment-service.js";
 import { t } from "../foundry/i18n.js";
-import { confirm, type EncounterBuilderApp } from "./encounter-builder-app.js";
+import { confirm } from "./dialogs.js";
+import type { EncounterBuilderApp } from "./encounter-builder-app.js";
+import { panelActions, type Panel } from "./panel.js";
 
-export class DeployPanel {
+export class DeployPanel implements Panel {
+  readonly actions: ReadonlySet<string> = panelActions<DeployPanel>(
+    "pickOrigin",
+    "clearOrigin",
+    "deploy",
+    "cleanup",
+  );
   readonly service = new DeploymentService(new FoundryDeploymentGateway());
   options: DeploymentOptions | null = null;
   origin: { x: number; y: number } | null = null;
@@ -175,10 +183,7 @@ export class DeployPanel {
           }),
         );
     } catch (error) {
-      this.app.pushMessage(
-        "error",
-        t("errors.generic", { message: error instanceof Error ? error.message : String(error) }),
-      );
+      this.app.reportError(error);
     } finally {
       this.busy = false;
     }

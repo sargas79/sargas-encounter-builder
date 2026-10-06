@@ -3,7 +3,13 @@
  */
 import type { CatalogFilter } from "../core/catalog.js";
 import type { CustomThemeRecord } from "../core/schemas.js";
-import { removeEntry, type Draft, type DraftEntry } from "../core/draft.js";
+import {
+  entryFromCatalog,
+  removeEntry,
+  type Draft,
+  type DraftEntry,
+  type DraftEntrySource,
+} from "../core/draft.js";
 import { setGeneratorBound } from "../core/generator-options.js";
 import { hashSeed, rngFromSeed } from "../core/rng.js";
 import {
@@ -20,7 +26,9 @@ import { escapeHtml, randomHexSeed, splitList } from "../core/util.js";
 import { DialogV2, isGM } from "../foundry/compat.js";
 import { t } from "../foundry/i18n.js";
 import { services } from "../foundry/services.js";
-import { confirm, type EncounterBuilderApp } from "./encounter-builder-app.js";
+import { confirm } from "./dialogs.js";
+import type { EncounterBuilderApp } from "./encounter-builder-app.js";
+import { panelActions, type Panel } from "./panel.js";
 
 export interface GeneratorOptions {
   /** "auto" or a theme id. */
@@ -37,7 +45,19 @@ export interface GeneratorOptions {
   showAdvanced: boolean;
 }
 
-export class GeneratorPanel {
+export class GeneratorPanel implements Panel {
+  readonly actions: ReadonlySet<string> = panelActions<GeneratorPanel>(
+    "setArchetype",
+    "toggleAdvanced",
+    "generate",
+    "regenerate",
+    "retheme",
+    "exclude",
+    "unexclude",
+    "newTheme",
+    "editTheme",
+    "deleteTheme",
+  );
   options: GeneratorOptions = {
     themeId: "auto",
     archetype: "any",
@@ -451,10 +471,7 @@ export class GeneratorPanel {
       }
     } catch (error) {
       console.error("sargas-encounter-builder | generation failed", error);
-      this.app.pushMessage(
-        "error",
-        t("errors.generic", { message: error instanceof Error ? error.message : String(error) }),
-      );
+      this.app.reportError(error);
     } finally {
       this.busy = false;
     }
@@ -463,32 +480,14 @@ export class GeneratorPanel {
 }
 
 function mergeEntries(
-  entries: {
-    uuid: string;
-    name: string;
-    level: number;
-    quantity: number;
-    traits: string[];
-    img: string | null;
-    packLabel: string | null;
-  }[],
+  entries: (DraftEntrySource & { quantity: number })[],
   previousLocks: Map<string, boolean>,
 ): DraftEntry[] {
   const map = new Map<string, DraftEntry>();
   for (const e of entries) {
     const existing = map.get(e.uuid);
     if (existing) existing.quantity += e.quantity;
-    else
-      map.set(e.uuid, {
-        uuid: e.uuid,
-        name: e.name,
-        level: e.level,
-        quantity: e.quantity,
-        locked: previousLocks.get(e.uuid) ?? false,
-        img: e.img,
-        packLabel: e.packLabel,
-        traits: e.traits,
-      });
+    else map.set(e.uuid, { ...entryFromCatalog(e, e.quantity), locked: previousLocks.get(e.uuid) ?? false });
   }
   return [...map.values()];
 }
