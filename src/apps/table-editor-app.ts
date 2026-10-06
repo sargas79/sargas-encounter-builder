@@ -33,7 +33,8 @@ import {
 import { t } from "../foundry/i18n.js";
 import { services } from "../foundry/services.js";
 import { saveTable, tableToModel, type RowEdit } from "../foundry/table-flags.js";
-import { splitList } from "../core/util.js";
+import { escapeHtml, splitList } from "../core/util.js";
+import { confirm } from "./encounter-builder-app.js";
 
 const Base = HandlebarsApplicationMixin()(ApplicationV2()) as any;
 
@@ -86,6 +87,9 @@ export class EncounterTableEditor extends Base {
   dirty = false;
   #listening = false;
   #names = new Map<string, string>();
+  /** Close-confirmation state: a prompt is open, or the GM already chose to discard. */
+  #closePrompt = false;
+  #discardConfirmed = false;
 
   constructor(tableUuid: string, options: Record<string, unknown> = {}) {
     super({ ...options, id: `${MODULE_ID}-table-editor-${tableUuid.replace(/\W/g, "_")}` });
@@ -98,6 +102,11 @@ export class EncounterTableEditor extends Base {
     if (!app) {
       app = new EncounterTableEditor(tableUuid);
       EncounterTableEditor.#instances.set(tableUuid, app);
+    }
+    // Reopening an editor with unsaved edits brings it forward instead of reloading over the edits.
+    if (app.rendered && app.dirty) {
+      app.bringToFront?.();
+      return app;
     }
     await app.load();
     await app.render({ force: true });
@@ -137,6 +146,12 @@ export class EncounterTableEditor extends Base {
           const doc = fromUuidSync(c.uuid) as { name?: string } | null;
           if (doc?.name) this.#names.set(c.uuid, doc.name);
         }
+      }
+      for (const uuid of row.flags?.template?.candidates ?? []) {
+        if (this.#names.has(uuid)) continue;
+        const entry = await catalog.locate(uuid);
+        const name = entry?.name ?? (fromUuidSync(uuid) as { name?: string } | null)?.name;
+        if (name) this.#names.set(uuid, name);
       }
       if (row.flags?.tableUuid && !this.#names.has(row.flags.tableUuid)) {
         const doc = fromUuidSync(row.flags.tableUuid) as { name?: string } | null;
@@ -242,7 +257,9 @@ export class EncounterTableEditor extends Base {
           composition: "unrestricted",
           threat: null,
         },
-        templateCandidates: (row.flags?.template?.candidates ?? [])
+        // The input holds raw UUIDs (it is parsed back as UUIDs); resolved names are shown read-only below it.
+        templateCandidates: (row.flags?.template?.candidates ?? []).join(", "),
+        templateCandidateNames: (row.flags?.template?.candidates ?? [])
           .map((uuid) => this.#names.get(uuid) ?? uuid)
           .join(", "),
         templateTraits: row.flags?.template?.traits.join(", ") ?? "",
@@ -276,6 +293,30 @@ export class EncounterTableEditor extends Base {
         permissions: { dragstart: () => false, drop: () => isGM() },
         callbacks: { drop: (event: DragEvent) => void this.#onDrop(event) },
       }).bind(root);
+    }
+  }
+
+  /** Ask before discarding unsaved edits. A confirmed close does not prompt again. */
+  async close(options: Record<string, unknown> = {}): Promise<this> {
+    if (this.dirty && !this.#discardConfirmed) {
+      if (this.#closePrompt) return this;
+      this.#closePrompt = true;
+      let ok = false;
+      try {
+        ok = await confirm(
+          t("editor.unsavedTitle"),
+          t("editor.unsavedConfirm", { name: escapeHtml(this.model?.name ?? "") }),
+        );
+      } finally {
+        this.#closePrompt = false;
+      }
+      if (!ok) return this;
+      this.#discardConfirmed = true;
+    }
+    try {
+      return await super.close(options);
+    } finally {
+      this.#discardConfirmed = false;
     }
   }
 
@@ -382,6 +423,7 @@ export class EncounterTableEditor extends Base {
           switch (c) {
             case "candidates":
               tp.candidates = splitList(value, false);
+              await this.#resolveNames();
               break;
             case "traits":
               tp.traits = splitList(value);
@@ -555,10 +597,14 @@ export class EncounterTableEditor extends Base {
     const rows: RowEdit[] = this.rows
       .filter((r) => r.flags)
       .map((r) => ({ id: r.id, range: r.range, weight: r.weight, text: r.text, flags: r.flags! }));
+    // Native rows stay unconfigured, but ranges derived from weights must still reach them.
+    const nativeRanges = this.rows
+      .filter((r) => !r.flags && r.id)
+      .map((r) => ({ id: r.id!, range: r.range, weight: r.weight }));
     try {
       await saveTable(
         doc,
-        { formula: this.formula, flags: this.flags, rows, deleteIds: this.deleteIds },
+        { formula: this.formula, flags: this.flags, rows, deleteIds: this.deleteIds, nativeRanges },
         (uuid) => this.#names.get(uuid) ?? null,
       );
       ui.notifications.info(t("editor.saved", { name: doc.name }));

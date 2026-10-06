@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.5
+
+Correctness and data-safety fixes from a full review:
+
+- Generator: encounters with a minimum or maximum number of different creatures (packs, warbands, mixed
+  patrols) no longer fail at random with "no feasible composition" when a valid encounter exists.
+- Themed generator: keeps looking for the closest fit instead of taking the first acceptable one. Packs try
+  other creatures, auto-theme tries other themes, and boss + minions tries an outsider boss before
+  settling for an under-budget result. Theme constraints are still never loosened.
+- Deploy cleanup asks for confirmation, keeps an imported actor that other tokens now use, and keeps a
+  created combat that gained other combatants (removing only the deployment's own). Kept items are listed.
+- Saved encounters: updating one rewrites only the module's own summary page, never the GM's notes.
+- Table editor: template candidates show raw UUIDs (names appear in a hint below) so saving no longer
+  corrupts them; "Derive ranges" also saves native rows; reopening keeps unsaved edits; closing with unsaved
+  changes asks first.
+- Security: saved-encounter names are escaped in the update and delete dialogs.
+- Damaged table flags, recipes and custom themes are repaired on load instead of crashing table validation
+  or silently never triggering an encounter check.
+- Release zips link their own version's download, ship without sourcemaps, and declare Foundry 14 as the
+  maximum compatible version. Quench batches register on `quenchReady`.
+- Development: releases fail if tag, `package.json` and CHANGELOG disagree; CI runs the format check;
+  `--legacy-peer-deps` is gone; `npm run test:coverage` added.
+
 ## 0.3.4
 
 - Threat meter: tier labels that would overlap (Low and Moderate at narrow widths) now drop onto a

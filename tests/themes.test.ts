@@ -473,3 +473,107 @@ describe("review fixes (0.2.0)", () => {
     expect(pool.length).toBeGreaterThan(0);
   });
 });
+
+describe("themed generation keeps the best fit instead of the first success", () => {
+  const party = { threat: "moderate" as const, partySize: 4, referenceLevel: 5 };
+
+  it("pack: tries other stat blocks when the first one only gives a near fit", () => {
+    // -3 (15 XP) packs top out at 75 XP (near); -2 (20 XP) x4 is exactly 80.
+    const candidates = [c("near", 2, ["animal"]), c("exact", 3, ["animal"])];
+    for (let seed = 1; seed <= 40; seed++) {
+      const result = generateThemedEncounter({
+        ...party,
+        candidates,
+        theme: "auto:animal",
+        archetype: "pack",
+        rng: mulberry32(seed),
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.fit).toBe("exact");
+      expect(result.entries.map((e) => e.uuid)).toEqual(["exact"]);
+    }
+  });
+
+  it("auto mode moves on from an under-budget theme to one with an exact fit", () => {
+    const candidates = [
+      c("u1", 1, ["undead"]),
+      c("u2", 1, ["undead"]),
+      c("a1", 7, ["animal"]),
+      c("a2", 7, ["animal"]),
+    ];
+    for (let seed = 1; seed <= 40; seed++) {
+      const result = generateThemedEncounter({
+        ...party,
+        candidates,
+        theme: "auto",
+        archetype: "any",
+        maxCount: 2,
+        rng: mulberry32(seed),
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.fit).toBe("exact");
+      expect(result.theme.id).toBe("auto:animal");
+      expect(result.themesTried.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("returns the closest non-exact result when nothing fits exactly", () => {
+    // Only under-budget options: the result is the closest one, not whichever came first.
+    const candidates = [
+      c("u1", 1, ["undead"]),
+      c("u2", 1, ["undead"]),
+      c("a1", 2, ["animal"]),
+      c("a2", 2, ["animal"]),
+    ];
+    for (let seed = 1; seed <= 20; seed++) {
+      const result = generateThemedEncounter({
+        ...party,
+        candidates,
+        theme: "auto",
+        archetype: "any",
+        maxCount: 2,
+        duplicateCap: 1,
+        rng: mulberry32(seed),
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.totalXP).toBe(30);
+    }
+  });
+
+  it("boss with minions: an outsider boss beats an under-budget in-theme result, never loosening the theme", () => {
+    const candidates = [c("u-boss", 3, ["undead"]), c("u-min", 1, ["undead"]), c("outsider", 6, ["animal"])];
+    for (let seed = 1; seed <= 20; seed++) {
+      const result = generateThemedEncounter({
+        ...party,
+        candidates,
+        theme: "auto:undead",
+        archetype: "bossMinions",
+        duplicateCap: 2,
+        rng: mulberry32(seed),
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.fit).toBe("exact");
+      expect(result.outsider?.uuid).toBe("outsider");
+      // Everything except the outsider boss stays in the theme.
+      for (const e of result.entries) if (e.uuid !== "outsider") expect(e.traits).toContain("undead");
+    }
+    // With the relaxation off, the in-theme under-budget result is returned as-is.
+    const strict = generateThemedEncounter({
+      ...party,
+      candidates,
+      theme: "auto:undead",
+      archetype: "bossMinions",
+      duplicateCap: 2,
+      outsiderBoss: false,
+      rng: mulberry32(1),
+    });
+    expect(strict.ok).toBe(true);
+    if (strict.ok) {
+      expect(strict.fit).toBe("under");
+      expect(strict.outsider).toBeNull();
+    }
+  });
+});

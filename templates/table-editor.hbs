@@ -60,6 +60,7 @@
         {{#if this.isTable}}<div class="seb-inline"><input type="text" name="row.{{this.index}}.tableUuid" value="{{this.flags.tableUuid}}" placeholder="RollTable.…"><span class="seb-row-meta">{{this.tableName}}</span></div>{{/if}}
         {{#if this.isTemplate}}
           <input type="text" name="row.{{this.index}}.template.candidates" value="{{this.templateCandidates}}" placeholder="{{localize 'sargas-encounter-builder.editor.templateCandidates'}}">
+          {{#if this.templateCandidateNames}}<div class="seb-hint">{{localize "sargas-encounter-builder.editor.templateCandidateNames" names=this.templateCandidateNames}}</div>{{/if}}
           <input type="text" name="row.{{this.index}}.template.traits" value="{{this.templateTraits}}" placeholder="{{localize 'sargas-encounter-builder.editor.templateTraits'}}">
           <div class="seb-inline">
             <label class="seb-row-meta">{{localize "sargas-encounter-builder.generator.relativeMin"}} <input type="number" name="row.{{this.index}}.template.levelMin" value="{{this.template.levelMin}}"></label>

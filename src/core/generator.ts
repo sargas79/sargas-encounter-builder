@@ -3,7 +3,7 @@
  *
  * 1. Subtract locked entries from the budget (fail if they exceed it).
  * 2. Exhaustively enumerate multisets of relative levels that fit (pruned, capped).
- * 3. Drop multisets the candidate pool cannot fill.
+ * 3. Drop multisets the candidate pool cannot fill, including within the distinct-stat-block limits.
  * 4. Classify exact / near / under; pick randomly among the best class.
  * 5. Fill each level slot with a random eligible creature.
  *
@@ -181,6 +181,29 @@ function compositionStillPossible(
 /*  Generator                                   */
 /* -------------------------------------------- */
 
+/**
+ * Range of new distinct stat blocks that can fill `count` slots at one level, given the spare capacity of the
+ * stat blocks already used at that level and the spare capacities of unused ones. Null when the level cannot
+ * be filled at all. Every value in the range is achievable (one creature cannot span two levels, so levels
+ * are independent).
+ */
+function newDistinctRange(
+  count: number,
+  reuseCapacity: number,
+  freshCapacities: number[],
+): { min: number; max: number } | null {
+  if (count <= 0) return { min: 0, max: 0 };
+  const sorted = freshCapacities.filter((c) => c > 0).sort((a, b) => b - a);
+  let covered = reuseCapacity;
+  let min = 0;
+  while (covered < count) {
+    if (min >= sorted.length) return null;
+    covered += sorted[min]!;
+    min++;
+  }
+  return { min, max: Math.min(count, sorted.length) };
+}
+
 interface LevelSlot {
   relative: number;
   xp: number;
@@ -330,6 +353,40 @@ export function generateEncounter(input: GeneratorInput): GeneratorResult {
         );
   }
 
+  // Distinct-count limits: drop multisets that cannot be filled within them, so the random pick below never
+  // lands on a level mix the fill step would have to reject.
+  const minDistinct = Math.max(0, Math.floor(input.minDistinctCreatures ?? 0));
+  const maxDistinct = Math.max(1, Math.floor(input.maxDistinctCreatures ?? Number.MAX_SAFE_INTEGER));
+  const spare = (c: GeneratorCandidate): number => Math.max(0, duplicateCap - (lockedUsage.get(c.uuid) ?? 0));
+  // Per-level ranges depend only on the count at that level; cache them (there may be many multisets).
+  const rangeCache = slots.map(() => new Map<number, ReturnType<typeof newDistinctRange>>());
+  const slotRange = (i: number, count: number) => {
+    const cache = rangeCache[i]!;
+    if (!cache.has(count)) cache.set(count, newDistinctRange(count, 0, slots[i]!.candidates.map(spare)));
+    return cache.get(count) ?? null;
+  };
+  const slotRanges = (m: Multiset) => m.counts.map((count, i) => slotRange(i, count));
+  const distinctFeasible = (m: Multiset): boolean => {
+    if (m.size === 0) return true;
+    let lo = 0;
+    let hi = 0;
+    for (const range of slotRanges(m)) {
+      if (!range) return false;
+      lo += range.min;
+      hi += range.max;
+    }
+    return lo <= maxDistinct && hi >= minDistinct;
+  };
+  const fillable = feasible.filter(distinctFeasible);
+  if (fillable.length === 0) {
+    return fail(
+      "noFeasibleComposition",
+      { stage: "distinct", composition, minDistinct, maxDistinct, feasibleMultisets: feasible.length },
+      enumerated,
+      capped,
+    );
+  }
+
   // Classify.
   const classify = (xp: number): FitClass => {
     const total = xp + lockedXP;
@@ -338,7 +395,7 @@ export function generateEncounter(input: GeneratorInput): GeneratorResult {
     return "under";
   };
   const byClass: Record<FitClass, Multiset[]> = { exact: [], near: [], under: [] };
-  for (const m of feasible) byClass[classify(m.xp)].push(m);
+  for (const m of fillable) byClass[classify(m.xp)].push(m);
   const fit: FitClass = byClass.exact.length ? "exact" : byClass.near.length ? "near" : "under";
   // Under-budget results are only returned when nothing better exists, and then only the closest ones.
   let pool = byClass[fit];
@@ -356,24 +413,51 @@ export function generateEncounter(input: GeneratorInput): GeneratorResult {
   const chosen = pickWeighted(rng, pool, weight);
 
   // Fill slots with concrete creatures.
-  const minDistinct = Math.max(0, Math.floor(input.minDistinctCreatures ?? 0));
-  const maxDistinct = Math.max(1, Math.floor(input.maxDistinctCreatures ?? Number.MAX_SAFE_INTEGER));
   const usage = new Map<string, number>(lockedUsage);
   const chosenTraits = new Set<string>(locked.flatMap((l) => l.traits ?? []));
   const generated = new Map<string, GeneratedEntry>();
-  const totalToFill = chosen.size;
-  let filled = 0;
+  const chosenRanges = slotRanges(chosen);
+  const spareNow = (c: GeneratorCandidate): number => Math.max(0, duplicateCap - (usage.get(c.uuid) ?? 0));
   for (let i = 0; i < slots.length; i++) {
     const slot = slots[i]!;
+    // Distinct stat blocks later levels still need at least / can add at most (they are untouched so far).
+    let futureMin = 0;
+    let futureMax = 0;
+    for (const range of chosenRanges.slice(i + 1)) {
+      futureMin += range?.min ?? 0;
+      futureMax += range?.max ?? 0;
+    }
     for (let k = 0; k < chosen.counts[i]!; k++) {
-      let eligible = slot.candidates.filter((c) => (usage.get(c.uuid) ?? 0) < duplicateCap);
-      const distinctSoFar = generated.size;
-      const remaining = totalToFill - filled;
-      // Hard distinct-count constraints: force new stat blocks while still short of the minimum,
-      // and force reuse once the maximum is reached.
-      if (distinctSoFar >= maxDistinct) eligible = eligible.filter((c) => generated.has(c.uuid));
-      else if (distinctSoFar + remaining <= minDistinct)
-        eligible = eligible.filter((c) => !generated.has(c.uuid));
+      const rest = chosen.counts[i]! - k - 1;
+      const used = slot.candidates.filter((c) => generated.has(c.uuid));
+      const fresh = slot.candidates.filter((c) => !generated.has(c.uuid));
+      const reuseCapacity = used.reduce((sum, c) => sum + spareNow(c), 0);
+      // Hard distinct-count constraints: only allow a pick that still leaves a way to finish within
+      // min/max distinct. Reuse picks all look alike; new picks differ only by their spare capacity.
+      const keepsFeasible = (distinct: number, range: { min: number; max: number } | null): boolean =>
+        range !== null &&
+        distinct + range.min + futureMin <= maxDistinct &&
+        distinct + range.max + futureMax >= minDistinct;
+      const reuseOk = keepsFeasible(
+        generated.size,
+        newDistinctRange(rest, reuseCapacity - 1, fresh.map(spareNow)),
+      );
+      const freshOk = new Map<number, boolean>();
+      const freshAllowed = (cap: number): boolean => {
+        let ok = freshOk.get(cap);
+        if (ok === undefined) {
+          const others = fresh.map(spareNow);
+          others.splice(others.indexOf(cap), 1);
+          ok = keepsFeasible(generated.size + 1, newDistinctRange(rest, reuseCapacity + cap - 1, others));
+          freshOk.set(cap, ok);
+        }
+        return ok;
+      };
+      const eligible = slot.candidates.filter((c) => {
+        const cap = spareNow(c);
+        if (cap <= 0) return false;
+        return generated.has(c.uuid) ? reuseOk : freshAllowed(cap);
+      });
       if (eligible.length === 0) {
         return fail(
           "noFeasibleComposition",
@@ -388,7 +472,6 @@ export function generateEncounter(input: GeneratorInput): GeneratorResult {
         const reuse = usage.has(c.uuid) ? 1 : 0;
         return 1 + 0.5 * shared + reuse;
       });
-      filled++;
       usage.set(creature.uuid, (usage.get(creature.uuid) ?? 0) + 1);
       for (const t of creature.traits) chosenTraits.add(t);
       const existing = generated.get(creature.uuid);
@@ -428,7 +511,7 @@ export function generateEncounter(input: GeneratorInput): GeneratorResult {
   explanation.push(`fit:${fit}`);
   if (fit !== "exact") explanation.push(`shortfall:${target - totalXP}`);
   if (capped) explanation.push("enumerationCapped");
-  explanation.push(`feasible:${feasible.length}`);
+  explanation.push(`feasible:${fillable.length}`);
 
   return {
     ok: true,
@@ -441,7 +524,7 @@ export function generateEncounter(input: GeneratorInput): GeneratorResult {
     explanation,
     enumerated,
     capped,
-    feasibleMultisets: feasible.length,
+    feasibleMultisets: fillable.length,
   };
 }
 

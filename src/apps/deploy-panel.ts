@@ -10,7 +10,7 @@ import {
   defaultDeploymentOptions,
 } from "../foundry/deployment-service.js";
 import { t } from "../foundry/i18n.js";
-import type { EncounterBuilderApp } from "./encounter-builder-app.js";
+import { confirm, type EncounterBuilderApp } from "./encounter-builder-app.js";
 
 export class DeployPanel {
   readonly service = new DeploymentService(new FoundryDeploymentGateway());
@@ -19,7 +19,7 @@ export class DeployPanel {
   pickingOrigin = false;
   busy = false;
   lastOutcome: { ledger: OperationLedger; unplaced: number } | null = null;
-  cleanupDone: { removed: number; failed: number } | null = null;
+  cleanupDone: { removed: number; failed: number; kept: string[] } | null = null;
   #originHandler: ((event: PointerEvent) => void) | null = null;
 
   constructor(private readonly app: EncounterBuilderApp) {}
@@ -187,12 +187,18 @@ export class DeployPanel {
 
   async cleanup(): Promise<void> {
     if (!isGM() || !this.lastOutcome) return;
-    const result = await this.service.cleanup(this.lastOutcome.ledger);
-    this.cleanupDone = { removed: result.removed, failed: result.failed.length };
-    this.app.pushMessage(
-      result.failed.length ? "warn" : "ok",
-      t("deploy.cleanupDone", { removed: result.removed, failed: result.failed.length }),
+    const ok = await confirm(
+      t("deploy.cleanupTitle"),
+      t("deploy.cleanupConfirm", { count: this.lastOutcome.ledger.created.length }),
+      "fa-solid fa-broom",
     );
+    if (!ok) return;
+    const result = await this.service.cleanup(this.lastOutcome.ledger);
+    const kept = result.kept.map((k) => `${k.kind}: ${k.name} (${t(`deploy.keptReason.${k.reason}`)})`);
+    this.cleanupDone = { removed: result.removed, failed: result.failed.length, kept };
+    let message = t("deploy.cleanupDone", { removed: result.removed, failed: result.failed.length });
+    if (kept.length) message += ` ${t("deploy.cleanupKept", { count: kept.length, names: kept.join(", ") })}`;
+    this.app.pushMessage(result.failed.length || kept.length ? "warn" : "ok", message);
     await this.app.render({ parts: ["header", "deploy"] });
   }
 

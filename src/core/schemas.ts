@@ -225,11 +225,15 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 const isString = (v: unknown): v is string => typeof v === "string";
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+/** Keep only the string elements of an array; anything that is not an array becomes []. */
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter(isString) : []);
+const finiteOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 const THREATS: readonly string[] = ["trivial", "low", "moderate", "severe", "extreme"];
 const POLICIES: readonly string[] = ["uniform", "averageFloor", "highest", "lowest", "manual"];
 const RESULT_KINDS: readonly string[] = ["creatures", "table", "narrative", "none", "template"];
 const COMPOSITIONS: readonly string[] = COMPOSITION_PREFERENCES;
+const NARRATIVE: readonly string[] = ["tracks", "travelers", "discovery", "weather", "other"];
 
 export function validatePartyProfile(raw: unknown): ValidationResult<PartyProfile> {
   const errors: string[] = [];
@@ -280,12 +284,17 @@ export function validateRecipe(raw: unknown): ValidationResult<Recipe> {
   if (raw.evaluation !== null && !isObject(raw.evaluation)) errors.push("evaluation invalid");
   if (!isInt(raw.createdAt) || !isInt(raw.updatedAt)) errors.push("timestamps invalid");
   if (errors.length) return { ok: false, errors };
+  // Display names are best-effort: a missing one falls back to the uuid.
+  const entries = (raw.entries as Record<string, unknown>[]).map((e) =>
+    isString(e.name) ? e : { ...e, name: e.uuid as string },
+  );
+  const value: Record<string, unknown> = { ...raw, entries };
   // Treasure is an optional extra: a damaged record is dropped, never the whole encounter.
   if (raw.treasure !== undefined && !isValidTreasureRecord(raw.treasure)) {
-    const { treasure: _dropped, ...rest } = raw;
+    const { treasure: _dropped, ...rest } = value;
     return { ok: true, value: rest as unknown as Recipe };
   }
-  return { ok: true, value: raw as unknown as Recipe };
+  return { ok: true, value: value as unknown as Recipe };
 }
 
 export function isValidTreasureRecord(raw: unknown): raw is TreasureRecordV1 {
@@ -316,6 +325,8 @@ export function isValidTreasureRecord(raw: unknown): raw is TreasureRecordV1 {
       isString(e.name) &&
       isInt(e.level) &&
       typeof e.price === "number" &&
+      Number.isFinite(e.price) &&
+      e.price >= 0 &&
       ["permanent", "consumable", "valuable"].includes(e.kind as string) &&
       isInt(e.slotLevel) &&
       isBool(e.locked),
@@ -338,7 +349,29 @@ export function validateTableFlags(raw: unknown): ValidationResult<TableFlags> {
   }
   if (!isObject(raw.tags)) errors.push("tags missing");
   if (!isString(raw.notes)) errors.push("notes missing");
-  return errors.length ? { ok: false, errors } : { ok: true, value: raw as unknown as TableFlags };
+  if (errors.length) return { ok: false, errors };
+  const tags = raw.tags as Record<string, unknown>;
+  const check = raw.encounterCheck as Record<string, unknown> | null;
+  const value = {
+    ...raw,
+    // Trigger values are compared against roll totals: numeric strings are coerced, anything else dropped.
+    encounterCheck: check
+      ? {
+          ...check,
+          occursOn: (check.occursOn as unknown[])
+            .map((n) => (isString(n) && n.trim() !== "" ? Number(n) : n))
+            .filter(isInt),
+        }
+      : null,
+    tags: {
+      ...tags,
+      region: strings(tags.region),
+      terrain: strings(tags.terrain),
+      season: strings(tags.season),
+      timeOfDay: strings(tags.timeOfDay),
+    },
+  };
+  return { ok: true, value: value as unknown as TableFlags };
 }
 
 export function validateResultFlags(raw: unknown): ValidationResult<ResultFlags> {
@@ -363,7 +396,29 @@ export function validateResultFlags(raw: unknown): ValidationResult<ResultFlags>
     }
   }
   if (!isString(raw.notes)) errors.push("notes missing");
-  return errors.length ? { ok: false, errors } : { ok: true, value: raw as unknown as ResultFlags };
+  if (errors.length) return { ok: false, errors };
+  // Coerce the optional fields the table code reads, so a damaged row cannot crash validation or resolution.
+  const template = raw.template as Record<string, unknown> | null;
+  const value = {
+    ...raw,
+    narrativeKind: NARRATIVE.includes(raw.narrativeKind as string)
+      ? raw.narrativeKind
+      : raw.kind === "narrative"
+        ? "other"
+        : null,
+    journalUuid: isString(raw.journalUuid) ? raw.journalUuid : null,
+    template: template
+      ? {
+          ...template,
+          candidates: strings(template.candidates),
+          traits: strings(template.traits),
+          levelMin: finiteOrNull(template.levelMin),
+          levelMax: finiteOrNull(template.levelMax),
+          threat: THREATS.includes(template.threat as string) ? template.threat : null,
+        }
+      : null,
+  };
+  return { ok: true, value: value as unknown as ResultFlags };
 }
 
 export function validateTagStore(raw: unknown): ValidationResult<TagStore> {
@@ -457,7 +512,15 @@ export function validateThemeStore(raw: unknown): ValidationResult<ThemeStoreV1>
         errors.push(`themes[${i}] invalid`);
     });
   }
-  return errors.length ? { ok: false, errors } : { ok: true, value: raw as unknown as ThemeStoreV1 };
+  if (errors.length) return { ok: false, errors };
+  // Non-string list elements can never match a trait or uuid; drop them instead of the whole store.
+  const themes = (raw.themes as Record<string, unknown>[]).map((t) => ({
+    ...t,
+    requiredTraits: strings(t.requiredTraits),
+    anyTraits: strings(t.anyTraits),
+    candidateUuids: strings(t.candidateUuids),
+  }));
+  return { ok: true, value: { ...raw, themes } as unknown as ThemeStoreV1 };
 }
 
 export function emptyThemeStore(): ThemeStoreV1 {

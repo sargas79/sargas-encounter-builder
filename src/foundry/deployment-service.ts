@@ -12,7 +12,10 @@
 import { FLAGS, MODULE_ID, SETTINGS } from "../constants.js";
 import {
   OperationLedger,
+  planCleanup,
   planDeployment,
+  type CleanupWorld,
+  type CreatedRecord,
   type DeploymentOptions,
   type DeploymentPlan,
 } from "../core/deployment.js";
@@ -35,6 +38,15 @@ export interface DeploymentGateway {
     tokens: TokenDocument[],
   ): Promise<{ id: string; uuid: string; name: string }[]>;
   deleteDocument(kind: "Actor" | "Token" | "Combat" | "Combatant", uuid: string): Promise<void>;
+  /** Current tokens and combatants, so cleanup can keep documents that are now in use elsewhere. */
+  cleanupWorld(): CleanupWorld;
+}
+
+export interface CleanupResult {
+  removed: number;
+  failed: { uuid: string; message: string }[];
+  /** Created documents left in place because something outside the operation uses them. */
+  kept: { kind: CreatedRecord["kind"]; name: string; reason: "actorInUse" | "combatInUse" }[];
 }
 
 export interface DeploymentPreview {
@@ -259,14 +271,17 @@ export class DeploymentService {
     return { ledger, placedTokens, unplaced };
   }
 
-  /** Delete only what the given operation created. Returns what was removed and what failed. */
-  async cleanup(
-    ledger: OperationLedger,
-  ): Promise<{ removed: number; failed: { uuid: string; message: string }[] }> {
+  /**
+   * Delete only what the given operation created, keeping created actors and combats that something outside
+   * the operation now uses. Returns what was removed, what failed and what was kept.
+   */
+  async cleanup(ledger: OperationLedger): Promise<CleanupResult> {
     if (!isGM()) throw new Error("GM only");
     let removed = 0;
     const failed: { uuid: string; message: string }[] = [];
-    for (const target of ledger.cleanupTargets()) {
+    const plan = planCleanup(ledger.cleanupTargets(), this.gateway.cleanupWorld());
+    const kept = plan.kept.map((k) => ({ kind: k.record.kind, name: k.record.name, reason: k.reason }));
+    for (const target of plan.remove) {
       try {
         await this.gateway.deleteDocument(target.kind, target.uuid);
         removed++;
@@ -274,7 +289,7 @@ export class DeploymentService {
         failed.push({ uuid: target.uuid, message: error instanceof Error ? error.message : String(error) });
       }
     }
-    return { removed, failed };
+    return { removed, failed, kept };
   }
 }
 
@@ -359,6 +374,20 @@ export class FoundryDeploymentGateway implements DeploymentGateway {
   async deleteDocument(_kind: "Actor" | "Token" | "Combat" | "Combatant", uuid: string): Promise<void> {
     const doc = await fromUuid(uuid);
     if (doc) await doc.delete();
+  }
+
+  cleanupWorld(): CleanupWorld {
+    const tokens = game.scenes.contents.flatMap((scene) =>
+      scene.tokens.contents.map((tk) => ({ uuid: tk.uuid, actorId: tk.actorId ?? null })),
+    );
+    const combats: CleanupWorld["combats"] = {};
+    for (const combat of game.combats.contents) {
+      combats[combat.uuid] = combat.combatants.contents.map((cb) => ({
+        uuid: cb.uuid ?? "",
+        tokenId: cb.tokenId ?? null,
+      }));
+    }
+    return { tokens, combats };
   }
 }
 

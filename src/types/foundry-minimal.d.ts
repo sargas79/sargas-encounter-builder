@@ -146,7 +146,7 @@ declare global {
   }
 
   interface CombatDocument extends FoundryDocument {
-    combatants: { contents: { initiative?: number | null }[] };
+    combatants: { contents: { initiative?: number | null; uuid?: string; tokenId?: string | null }[] };
     scene: SceneDocument | null;
     started: boolean;
     round: number;

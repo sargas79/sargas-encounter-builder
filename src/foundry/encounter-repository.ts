@@ -87,7 +87,7 @@ export class JournalRecipeStore implements RecipeStore {
       folder: folder?.id ?? null,
       ownership: { default: levels.NONE },
       flags: { [MODULE_ID]: { [FLAGS.recipe]: recipe } },
-      pages: [{ name: "Summary", type: "text", text: { content: summaryHtml(recipe), format: 1 } }],
+      pages: [summaryPageData(recipe)],
     });
     return { id: journal.id, uuid: journal.uuid };
   }
@@ -101,11 +101,13 @@ export class JournalRecipeStore implements RecipeStore {
       [`flags.${MODULE_ID}.-=${FLAGS.recipe}`]: null,
       [`flags.${MODULE_ID}.${FLAGS.recipe}`]: recipe,
     });
-    const page = journal.pages.contents[0];
-    if (page)
+    const pageId = findSummaryPageId(journal.pages.contents);
+    if (pageId)
       await journal.updateEmbeddedDocuments("JournalEntryPage", [
-        { _id: page.id, "text.content": summaryHtml(recipe) },
+        { _id: pageId, "text.content": summaryHtml(recipe), [`flags.${MODULE_ID}.${FLAGS.summary}`]: true },
       ]);
+    // Never overwrite a page the GM wrote: add a fresh managed summary page instead.
+    else await journal.createEmbeddedDocuments("JournalEntryPage", [summaryPageData(recipe)]);
   }
 
   async delete(id: string): Promise<void> {
@@ -127,6 +129,35 @@ export class JournalRecipeStore implements RecipeStore {
       return null;
     }
   }
+}
+
+/** Minimal view of a JournalEntryPage for finding the managed summary page. */
+export interface SummaryPageCandidate {
+  id: string;
+  name: string;
+  type: string;
+  flags?: Record<string, Record<string, unknown> | undefined>;
+}
+
+/**
+ * The page holding the module-managed summary: the page flagged as such, or, for entries saved before the
+ * flag existed, the single text page named "Summary" the module created. Null when neither is found
+ * (e.g. the GM deleted or renamed it), so the caller adds a new page instead of overwriting the GM's.
+ */
+export function findSummaryPageId(pages: readonly SummaryPageCandidate[]): string | null {
+  const flagged = pages.find((p) => p.flags?.[MODULE_ID]?.[FLAGS.summary] === true);
+  if (flagged) return flagged.id;
+  const legacy = pages.filter((p) => p.name === "Summary" && p.type === "text");
+  return legacy.length === 1 ? legacy[0]!.id : null;
+}
+
+function summaryPageData(recipe: Recipe): Record<string, unknown> {
+  return {
+    name: "Summary",
+    type: "text",
+    text: { content: summaryHtml(recipe), format: 1 },
+    flags: { [MODULE_ID]: { [FLAGS.summary]: true } },
+  };
 }
 
 function summaryHtml(recipe: Recipe): string {

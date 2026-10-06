@@ -62,6 +62,12 @@ export interface OperationFailure {
   message: string;
 }
 
+/** Delete in dependency order: combatants, tokens, combats, then actors. */
+function inCleanupOrder(records: readonly CreatedRecord[]): CreatedRecord[] {
+  const order: CreatedRecord["kind"][] = ["Combatant", "Token", "Combat", "Actor"];
+  return [...records].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+}
+
 export class OperationLedger {
   readonly created: CreatedRecord[] = [];
   readonly reused: { kind: "Actor" | "Combat"; uuid: string; name: string }[] = [];
@@ -99,9 +105,7 @@ export class OperationLedger {
 
   /** Documents that are safe to delete: only what this operation created. Never reused or pre-existing. */
   cleanupTargets(): CreatedRecord[] {
-    // Delete in dependency order: combatants, tokens, combats, then actors.
-    const order: CreatedRecord["kind"][] = ["Combatant", "Token", "Combat", "Actor"];
-    return [...this.created].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+    return inCleanupOrder(this.created);
   }
 
   summary(): { created: Record<CreatedRecord["kind"], number>; reused: number; failures: number } {
@@ -109,4 +113,58 @@ export class OperationLedger {
     for (const c of this.created) created[c.kind]++;
     return { created, reused: this.reused.length, failures: this.failures.length };
   }
+}
+
+/* -------------------------------------------- */
+/*  Cleanup decisions                           */
+/* -------------------------------------------- */
+
+/** Snapshot of the world documents a cleanup could affect, taken just before deleting. */
+export interface CleanupWorld {
+  /** Every token on every scene, with the actor it references. */
+  tokens: { uuid: string; actorId: string | null }[];
+  /** Combatants of every combat, keyed by combat uuid. */
+  combats: Record<string, { uuid: string; tokenId: string | null }[]>;
+}
+
+export interface CleanupPlan {
+  /** Documents to delete, in dependency order. */
+  remove: CreatedRecord[];
+  /** Created documents kept because something outside this operation now uses them. */
+  kept: { record: CreatedRecord; reason: "actorInUse" | "combatInUse" }[];
+}
+
+/**
+ * Decide what a cleanup may delete. Created tokens and combatants always go. A created actor is kept
+ * when a token outside the operation references it; a created combat is kept (only our combatants are
+ * removed) when it holds combatants that are not ours.
+ */
+export function planCleanup(created: readonly CreatedRecord[], world: CleanupWorld): CleanupPlan {
+  const ours = (kind: CreatedRecord["kind"]) => created.filter((c) => c.kind === kind);
+  const tokenUuids = new Set(ours("Token").map((c) => c.uuid));
+  const tokenIds = new Set(ours("Token").map((c) => c.id));
+  const combatantUuids = new Set(ours("Combatant").map((c) => c.uuid));
+  const foreignActorIds = new Set(
+    world.tokens.filter((tk) => !tokenUuids.has(tk.uuid) && tk.actorId).map((tk) => tk.actorId!),
+  );
+  const remove: CreatedRecord[] = [];
+  const kept: CleanupPlan["kept"] = [];
+  for (const record of inCleanupOrder(created)) {
+    if (record.kind === "Actor" && foreignActorIds.has(record.id)) {
+      kept.push({ record, reason: "actorInUse" });
+      continue;
+    }
+    if (record.kind === "Combat") {
+      const combatants = world.combats[record.uuid] ?? [];
+      const foreign = combatants.some(
+        (cb) => !combatantUuids.has(cb.uuid) && !(cb.tokenId !== null && tokenIds.has(cb.tokenId)),
+      );
+      if (foreign) {
+        kept.push({ record, reason: "combatInUse" });
+        continue;
+      }
+    }
+    remove.push(record);
+  }
+  return { remove, kept };
 }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { OperationLedger, planDeployment } from "../src/core/deployment.js";
+import { OperationLedger, planCleanup, planDeployment, type CreatedRecord } from "../src/core/deployment.js";
 import { footprintCells, placeTokens, spiral, tokenNames } from "../src/core/placement.js";
 import { DeploymentService, type DeploymentGateway } from "../src/foundry/deployment-service.js";
 import type { DraftEntry } from "../src/core/draft.js";
@@ -135,6 +135,25 @@ class FakeGateway implements DeploymentGateway {
   }
   async deleteDocument(_kind: string, uuid: string) {
     this.deleted.push(uuid);
+  }
+  /** Tokens placed outside the operation, e.g. a GM dragging an imported actor onto another scene. */
+  foreignTokens: { uuid: string; actorId: string | null }[] = [];
+  cleanupWorld() {
+    return {
+      tokens: [
+        ...this.tokens.map((tk) => ({ uuid: tk.uuid as string, actorId: (tk.actorId as string) ?? null })),
+        ...this.foreignTokens,
+      ],
+      combats: Object.fromEntries(
+        this.combats.map((c) => [
+          c.uuid,
+          (c.combatants as { uuid: string; tokenId?: string }[]).map((cb) => ({
+            uuid: cb.uuid,
+            tokenId: cb.tokenId ?? null,
+          })),
+        ]),
+      ),
+    };
   }
 }
 
@@ -394,6 +413,82 @@ describe("T23: partial failures are reported exactly and cleanup removes only op
     expect(gateway.deleted.indexOf("Scene.scene1.Token.tok0")).toBeLessThan(
       gateway.deleted.indexOf("Actor.imp1"),
     );
+  });
+
+  it("cleanup keeps an imported actor that a token outside the operation uses, and reports it", async () => {
+    const gateway = new FakeGateway();
+    const service = new DeploymentService(gateway);
+    const outcome = await service.deploy(
+      [entry("Compendium.p.Actor.bear", "Bear", 1)],
+      { sceneId: "scene1", importPolicy: "fresh", hidden: true, addToCombat: "none", numberDuplicates: true },
+      null,
+    );
+    gateway.foreignTokens.push({ uuid: "Scene.other.Token.x", actorId: "imp1" });
+    const result = await service.cleanup(outcome.ledger);
+    expect(gateway.deleted).toEqual(["Scene.scene1.Token.tok0"]);
+    expect(result.removed).toBe(1);
+    expect(result.kept).toEqual([{ kind: "Actor", name: "Imported bear", reason: "actorInUse" }]);
+  });
+
+  it("cleanup keeps a created combat that gained other combatants, removing only ours", async () => {
+    const gateway = new FakeGateway();
+    const service = new DeploymentService(gateway);
+    const outcome = await service.deploy(
+      [entry("Compendium.p.Actor.bear", "Bear", 1)],
+      { sceneId: "scene1", importPolicy: "fresh", hidden: true, addToCombat: "new", numberDuplicates: true },
+      null,
+    );
+    gateway.combats[0]!.combatants.push({ uuid: "Combat.combat0.Combatant.pc", tokenId: "pcToken" });
+    const result = await service.cleanup(outcome.ledger);
+    expect(gateway.deleted).toContain("Combat.combat0.Combatant.cb0");
+    expect(gateway.deleted).not.toContain("Combat.combat0");
+    expect(result.kept).toEqual([{ kind: "Combat", name: "Combat", reason: "combatInUse" }]);
+  });
+
+  it("planCleanup: pure decisions for actors and combats", () => {
+    const created: CreatedRecord[] = [
+      { kind: "Actor", id: "a1", uuid: "Actor.a1", name: "A1" },
+      { kind: "Actor", id: "a2", uuid: "Actor.a2", name: "A2" },
+      { kind: "Token", id: "t1", uuid: "Scene.s.Token.t1", name: "T1" },
+      { kind: "Combat", id: "c1", uuid: "Combat.c1", name: "C1" },
+      { kind: "Combatant", id: "cb1", uuid: "Combat.c1.Combatant.cb1", name: "CB1" },
+    ];
+    // Our own token referencing a1 does not keep it; a foreign token referencing a2 does.
+    // A combatant matched by our token id (but not recorded) still counts as ours.
+    const plan = planCleanup(created, {
+      tokens: [
+        { uuid: "Scene.s.Token.t1", actorId: "a1" },
+        { uuid: "Scene.s2.Token.z", actorId: "a2" },
+        { uuid: "Scene.s2.Token.y", actorId: null },
+      ],
+      combats: {
+        "Combat.c1": [
+          { uuid: "Combat.c1.Combatant.cb1", tokenId: "t1" },
+          { uuid: "Combat.c1.Combatant.cb2", tokenId: "t1" },
+        ],
+      },
+    });
+    expect(plan.remove.map((r) => r.uuid)).toEqual([
+      "Combat.c1.Combatant.cb1",
+      "Scene.s.Token.t1",
+      "Combat.c1",
+      "Actor.a1",
+    ]);
+    expect(plan.kept).toEqual([{ record: created[1], reason: "actorInUse" }]);
+
+    const busy = planCleanup(created, {
+      tokens: [],
+      combats: { "Combat.c1": [{ uuid: "Combat.c1.Combatant.other", tokenId: "pc" }] },
+    });
+    expect(busy.remove.map((r) => r.uuid)).toEqual([
+      "Combat.c1.Combatant.cb1",
+      "Scene.s.Token.t1",
+      "Actor.a1",
+      "Actor.a2",
+    ]);
+    expect(busy.kept.map((k) => k.reason)).toEqual(["combatInUse"]);
+    // A combat that no longer exists is still targeted (deleting a missing document is a no-op).
+    expect(planCleanup(created, { tokens: [], combats: {} }).remove.map((r) => r.kind)).toContain("Combat");
   });
 
   it("ledger cleanup targets exclude reused documents", () => {

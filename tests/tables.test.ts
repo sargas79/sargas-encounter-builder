@@ -14,6 +14,7 @@ import { mulberry32 } from "../src/core/rng.js";
 import { evaluateEncounter } from "../src/core/budget.js";
 import { diffEntries } from "../src/core/variant.js";
 import { generateEncounter } from "../src/core/generator.js";
+import { saveTable } from "../src/foundry/table-flags.js";
 
 /* ------------------------------------------------------------------ */
 
@@ -517,5 +518,52 @@ describe("review fixes", () => {
     const issues = validateTable(table("RollTable.w0", "1d3", rows, { mode: "weight" }));
     expect(issues.some((i) => i.code === "rangeInvalid")).toBe(false);
     expect(issues.some((i) => i.code === "weightZero" && i.level === "warning")).toBe(true);
+  });
+});
+
+describe("saving a table writes derived ranges to native rows", () => {
+  it("updates only range/weight of native rows whose range changed", async () => {
+    (globalThis as Record<string, unknown>).game = { user: { isGM: true } };
+    const native = (id: string, range: [number, number], weight = 1) => ({
+      id,
+      range,
+      weight,
+      description: id,
+      getFlag: () => undefined,
+    });
+    const results = new Map([
+      ["a", native("a", [1, 1])],
+      ["b", native("b", [2, 2])],
+    ]);
+    const updates: Record<string, unknown>[] = [];
+    const table = {
+      formula: "1d2",
+      results: { get: (id: string) => results.get(id) },
+      getFlag: () => emptyTableFlags(),
+      update: async () => table,
+      updateEmbeddedDocuments: async (_type: string, data: Record<string, unknown>[]) => {
+        updates.push(...data);
+        return [];
+      },
+      createEmbeddedDocuments: async () => [],
+      deleteEmbeddedDocuments: async () => [],
+    };
+    await saveTable(
+      table as unknown as RollTableDocument,
+      {
+        formula: "1d2",
+        flags: emptyTableFlags(),
+        rows: [],
+        deleteIds: [],
+        nativeRanges: [
+          { id: "a", range: [1, 1], weight: 1 },
+          { id: "b", range: [2, 3], weight: 2 },
+          { id: "gone", range: [4, 4], weight: 1 },
+        ],
+      },
+      () => null,
+    );
+    // Unchanged and missing rows are skipped; no module flags or text are written to the native row.
+    expect(updates).toEqual([{ _id: "b", range: [2, 3], weight: 2 }]);
   });
 });

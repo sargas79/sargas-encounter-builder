@@ -10,7 +10,8 @@ import {
   snapshotEvaluation,
 } from "../core/recipe.js";
 import type { EvaluationSnapshot, Recipe, RecipeEntry } from "../core/schemas.js";
-import { DialogV2, isGM } from "../foundry/compat.js";
+import { isGM } from "../foundry/compat.js";
+import { escapeHtml } from "../core/util.js";
 import {
   EncounterRepository,
   JournalRecipeStore,
@@ -20,7 +21,7 @@ import { t } from "../foundry/i18n.js";
 import { services } from "../foundry/services.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
 import type { TreasurePanel } from "./treasure-panel.js";
-import { promptText } from "./encounter-builder-app.js";
+import { confirm, promptText } from "./encounter-builder-app.js";
 
 export class SavedPanel {
   readonly repository = new EncounterRepository(new JournalRecipeStore());
@@ -173,10 +174,7 @@ export class SavedPanel {
   async updateEvaluation(): Promise<void> {
     const record = this.repository.get(this.selectedId ?? "");
     if (!record || !this.recalculated || !isGM()) return;
-    const ok = await DialogV2().confirm({
-      window: { title: t("saved.updateEvalTitle") },
-      content: `<p>${t("saved.updateEvalConfirm")}</p>`,
-    });
+    const ok = await confirm(t("saved.updateEvalTitle"), t("saved.updateEvalConfirm"));
     if (!ok) return;
     await this.repository.update(record.id, { ...record.recipe, evaluation: this.recalculated });
     this.recalculated = null;
@@ -187,10 +185,10 @@ export class SavedPanel {
   async updateFromDraft(): Promise<void> {
     const record = this.repository.get(this.selectedId ?? "");
     if (!record || !isGM() || this.app.state.draft.entries.length === 0) return;
-    const ok = await DialogV2().confirm({
-      window: { title: t("saved.updateTitle") },
-      content: `<p>${t("saved.updateConfirm", { name: record.recipe.name })}</p>`,
-    });
+    const ok = await confirm(
+      t("saved.updateTitle"),
+      t("saved.updateConfirm", { name: escapeHtml(record.recipe.name) }),
+    );
     if (!ok) return;
     const resolved = this.app.state.resolved;
     const snapshot = snapshotEvaluation(
@@ -238,10 +236,11 @@ export class SavedPanel {
   async delete(): Promise<void> {
     const record = this.repository.get(this.selectedId ?? "");
     if (!record || !isGM()) return;
-    const ok = await DialogV2().confirm({
-      window: { title: t("saved.deleteTitle") },
-      content: `<p>${t("saved.deleteConfirm", { name: record.recipe.name })}</p>`,
-    });
+    const ok = await confirm(
+      t("saved.deleteTitle"),
+      t("saved.deleteConfirm", { name: escapeHtml(record.recipe.name) }),
+      "fa-solid fa-trash",
+    );
     if (!ok) return;
     await this.repository.delete(record.id);
     this.selectedId = null;

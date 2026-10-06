@@ -21,6 +21,8 @@ export const FLAGS = {
   deployment: "deployment",
   /** Provenance marker on Loot actors created from a treasure result. */
   treasure: "treasure",
+  /** Marker on the module-managed summary page of a saved recipe JournalEntry. */
+  summary: "summary",
 } as const;
 
 /** World setting keys. */

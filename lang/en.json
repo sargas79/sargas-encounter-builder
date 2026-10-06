@@ -429,6 +429,9 @@
       "save": "Save",
       "saveBlocked": "Fix the validation errors before saving.",
       "saved": "Saved {name}.",
+      "unsavedTitle": "Unsaved changes",
+      "unsavedConfirm": "Close {name} and discard the unsaved changes?",
+      "templateCandidateNames": "Resolves to: {names}",
       "dropHint": "Drop Actors, RollTables or Journal entries onto a row.",
       "range": "Range",
       "weight": "Weight",
@@ -575,7 +578,14 @@
       "ledger": "Documents touched",
       "cleanup": "Remove documents created by this operation",
       "cleanupHint": "Only documents this operation created are deleted. Reused actors and pre-existing tokens are kept.",
-      "cleanupDone": "Cleanup removed {removed} document(s), {failed} failed."
+      "cleanupDone": "Cleanup removed {removed} document(s), {failed} failed.",
+      "cleanupTitle": "Remove created documents",
+      "cleanupConfirm": "Delete the {count} document(s) this operation created? Actors still used by other tokens and combats with other combatants are kept.",
+      "cleanupKept": "Kept {count} document(s) still in use: {names}.",
+      "keptReason": {
+        "actorInUse": "used by other tokens",
+        "combatInUse": "has other combatants"
+      }
     },
     "treasure": {
       "budgetTitle": "Treasure budget",
