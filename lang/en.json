@@ -225,6 +225,8 @@
       "tagsLabel": "Tags (key:value, comma separated, e.g. family:goblinoid, environment:forest)",
       "noResultsTitle": "No creatures match",
       "noResults": "Loosen the filters or search for another name.",
+      "moreResults": "Showing {shown} of {total} matches, lowest level first.",
+      "showMore": "Show more",
       "encounter": "Encounter",
       "dropHint": "Drop an NPC here to add it (nothing is imported)",
       "emptyDraftTitle": "Nothing here yet",

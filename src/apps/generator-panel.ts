@@ -10,7 +10,7 @@ import {
   type DraftEntry,
   type DraftEntrySource,
 } from "../core/draft.js";
-import { setGeneratorBound } from "../core/generator-options.js";
+import { GENERATOR_BOUND_DEFAULTS, setGeneratorBound } from "../core/generator-options.js";
 import { hashSeed, rngFromSeed } from "../core/rng.js";
 import {
   ARCHETYPES,
@@ -62,11 +62,7 @@ export class GeneratorPanel implements Panel {
     themeId: "auto",
     archetype: "any",
     outsiderBoss: true,
-    relativeMin: -4,
-    relativeMax: 4,
-    minCount: 1,
-    maxCount: 6,
-    duplicateCap: 4,
+    ...GENERATOR_BOUND_DEFAULTS,
     seed: "",
     excludeUuids: [],
     showAdvanced: false,

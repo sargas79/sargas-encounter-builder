@@ -1,8 +1,9 @@
-{{!-- Catalog result list body. Expects {busy, build:{noPacks, results}}; also rendered on its own to patch the list in place while the search box keeps focus. --}}
+{{!-- Catalog result list body. Expects {busy, build:{noPacks, results, hiddenCount, moreHint}}; also rendered on its own to patch the list in place while the search box keeps focus. --}}
 {{#if busy}}<div class="seb-note"><i class="fa-solid fa-spinner fa-spin"></i> {{localize "sargas-encounter-builder.build.loading"}}</div>{{/if}}
 {{#if build.noPacks}}<div class="seb-empty"><i class="fa-solid fa-book"></i><p class="seb-empty-title">{{localize "sargas-encounter-builder.build.noPacksTitle"}}</p><p class="seb-empty-hint">{{localize "sargas-encounter-builder.build.noPacks"}}</p></div>
 {{else}}
   {{#each build.results}}{{> "modules/sargas-encounter-builder/templates/builder/creature-row.hbs" this}}{{else}}
   {{#unless ../busy}}<div class="seb-empty"><i class="fa-solid fa-ghost"></i><p class="seb-empty-title">{{localize "sargas-encounter-builder.build.noResultsTitle"}}</p><p class="seb-empty-hint">{{localize "sargas-encounter-builder.build.noResults"}}</p></div>{{/unless}}
   {{/each}}
+  {{#if build.hiddenCount}}<div class="seb-note seb-catalog-more"><span>{{build.moreHint}}</span> <button type="button" data-action="showMoreResults"><i class="fa-solid fa-angles-down"></i> {{localize "sargas-encounter-builder.build.showMore"}}</button></div>{{/if}}
 {{/if}}

@@ -11,8 +11,8 @@ export interface GeneratorBounds {
 export type GeneratorBoundKey = keyof GeneratorBounds;
 
 export const GENERATOR_BOUND_DEFAULTS: GeneratorBounds = {
-  relativeMin: -4,
-  relativeMax: 4,
+  relativeMin: -2,
+  relativeMax: 2,
   minCount: 1,
   maxCount: 6,
   duplicateCap: 4,

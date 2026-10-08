@@ -7,7 +7,7 @@ describe("generator panel bounds", () => {
     expect(setGeneratorBound(options, "relativeMax", "9")).toEqual(["relativeMax"]);
     expect(options.relativeMax).toBe(4);
     setGeneratorBound(options, "relativeMin", "abc");
-    expect(options.relativeMin).toBe(-4);
+    expect(options.relativeMin).toBe(-2);
     setGeneratorBound(options, "duplicateCap", "0");
     expect(options.duplicateCap).toBe(4);
   });

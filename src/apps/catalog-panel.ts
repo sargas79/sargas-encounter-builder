@@ -22,9 +22,14 @@ import type { Panel } from "./panel.js";
 import { describePackState, draftSummary, meterContext, signed } from "./view-models.js";
 
 const CATALOG_LIST = `modules/${MODULE_ID}/templates/builder/catalog-list.hbs`;
+/** Rows rendered per page of catalog results; "Show more" adds another page. */
+const RESULT_PAGE = 200;
 
 export class CatalogPanel implements Panel {
   #muted = 0;
+  /** How many results to keep; reset to one page whenever the query changes. */
+  #limit = RESULT_PAGE;
+  #lastQuery = "";
   /** Debounced search-and-render, for typing and catalog change events. */
   readonly search = debounce(() => void this.runSearch(), 250);
 
@@ -37,11 +42,20 @@ export class CatalogPanel implements Panel {
     const { catalog } = services();
     const state = this.app.state;
     const ref = state.resolved?.roster.reference.level ?? null;
+    const filter = { ...state.filter, referenceLevel: ref };
+    const query = JSON.stringify(filter);
+    if (query !== this.#lastQuery) {
+      this.#lastQuery = query;
+      this.#limit = RESULT_PAGE;
+    }
     try {
-      state.results = (await catalog.search({ ...state.filter, referenceLevel: ref })).slice(0, 200);
+      const all = await catalog.search(filter);
+      state.resultTotal = all.length;
+      state.results = all.slice(0, this.#limit);
     } catch (error) {
       console.error(`${MODULE_ID} | search failed`, error);
       state.results = [];
+      state.resultTotal = 0;
     }
   }
 
@@ -88,10 +102,22 @@ export class CatalogPanel implements Panel {
     const build = {
       noPacks: catalog.selectedPackIds().length === 0,
       results: this.#resultsContext(),
+      ...this.#countContext(),
     };
     list.innerHTML = await renderTemplate(CATALOG_LIST, { busy: this.app.state.busy, build });
     const count = root.querySelector<HTMLElement>(".seb-catalog-count");
-    if (count) count.textContent = String(this.app.state.results.length);
+    if (count) count.textContent = build.resultCount;
+  }
+
+  /** Header count ("200 / 1234" when truncated) and the "Show more" footer for the result list. */
+  #countContext(): { resultCount: string; hiddenCount: number; moreHint: string } {
+    const { results, resultTotal } = this.app.state;
+    const hiddenCount = Math.max(0, resultTotal - results.length);
+    return {
+      resultCount: hiddenCount > 0 ? `${results.length} / ${resultTotal}` : String(results.length),
+      hiddenCount,
+      moreHint: hiddenCount > 0 ? t("build.moreResults", { shown: results.length, total: resultTotal }) : "",
+    };
   }
 
   /* ---------------------------- context ----------------------------- */
@@ -123,7 +149,7 @@ export class CatalogPanel implements Panel {
       isGenerate: state.buildMode === "generate",
       filter: state.filter,
       results: this.#resultsContext(),
-      resultCount: state.results.length,
+      ...this.#countContext(),
       draft: state.draft.entries.map((entry) => {
         const ev = evaluation?.entries.find((e) => e.id === entry.uuid);
         return {
@@ -316,6 +342,12 @@ export class CatalogPanel implements Panel {
     } finally {
       state.busy = false;
     }
+    await this.runSearch();
+  }
+
+  /** Keep another page of results for the same query. */
+  async showMoreResults(): Promise<void> {
+    this.#limit += RESULT_PAGE;
     await this.runSearch();
   }
 

@@ -64,6 +64,8 @@ export interface BuilderState {
   draft: Draft;
   filter: CatalogFilter;
   results: CatalogEntry[];
+  /** Matches before `results` was cut to the visible page(s). */
+  resultTotal: number;
   busy: boolean;
   messages: Message[];
   buildMode: BuildMode;
@@ -113,6 +115,7 @@ export class EncounterBuilderApp extends Base {
       refreshCatalog: route("catalog", "refreshCatalog"),
       editTags: route("catalog", "editTags"),
       setRarity: route("catalog", "setRarity"),
+      showMoreResults: route("catalog", "showMoreResults"),
       ext: EncounterBuilderApp.#onPanelAction,
       replaceEntry: EncounterBuilderApp.#onReplaceEntry,
     },
@@ -136,6 +139,7 @@ export class EncounterBuilderApp extends Base {
     draft: emptyDraft(),
     filter: { relativeMin: -2, relativeMax: 2 },
     results: [],
+    resultTotal: 0,
     busy: false,
     messages: [],
     buildMode: "generate",
