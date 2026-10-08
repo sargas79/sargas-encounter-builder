@@ -30,6 +30,7 @@ export class CatalogPanel implements Panel {
   /** How many results to keep; reset to one page whenever the query changes. */
   #limit = RESULT_PAGE;
   #lastQuery = "";
+  #loadingMore = false;
   /** Debounced search-and-render, for typing and catalog change events. */
   readonly search = debounce(() => void this.runSearch(), 250);
 
@@ -43,7 +44,7 @@ export class CatalogPanel implements Panel {
     const state = this.app.state;
     const ref = state.resolved?.roster.reference.level ?? null;
     const filter = { ...state.filter, referenceLevel: ref };
-    const query = JSON.stringify(filter);
+    const query = JSON.stringify([filter, catalog.selectedPackIds()]);
     if (query !== this.#lastQuery) {
       this.#lastQuery = query;
       this.#limit = RESULT_PAGE;
@@ -347,8 +348,19 @@ export class CatalogPanel implements Panel {
 
   /** Keep another page of results for the same query. */
   async showMoreResults(): Promise<void> {
-    this.#limit += RESULT_PAGE;
-    await this.runSearch();
+    if (this.#loadingMore) return;
+    this.#loadingMore = true;
+    const shown = this.app.state.results.length;
+    try {
+      this.#limit += RESULT_PAGE;
+      await this.runSearch();
+    } finally {
+      this.#loadingMore = false;
+    }
+    // The render replaced the button; keep keyboard focus at the first newly shown row.
+    const root: HTMLElement | null = this.app.element ?? null;
+    const row = root?.querySelectorAll<HTMLElement>(".seb-catalog-list [data-uuid]")[shown];
+    row?.querySelector<HTMLElement>('[data-action="addCreature"]')?.focus();
   }
 
   async setRarity(target: HTMLElement): Promise<void> {
