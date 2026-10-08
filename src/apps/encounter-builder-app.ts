@@ -11,6 +11,7 @@ import { MODULE_ID, SETTINGS } from "../constants.js";
 import { THREAT_LEVELS, type ThreatLevel } from "../core/budget.js";
 import type { CatalogEntry, CatalogFilter } from "../core/catalog.js";
 import { emptyDraft, evaluateDraft, type Draft, type DraftEvaluation } from "../core/draft.js";
+import { GENERATOR_BOUND_DEFAULTS } from "../core/generator-options.js";
 import type { RosterState } from "../core/party.js";
 import {
   ApplicationV2,
@@ -64,6 +65,8 @@ export interface BuilderState {
   draft: Draft;
   filter: CatalogFilter;
   results: CatalogEntry[];
+  /** Matches before `results` was cut to the visible page(s). */
+  resultTotal: number;
   busy: boolean;
   messages: Message[];
   buildMode: BuildMode;
@@ -113,6 +116,7 @@ export class EncounterBuilderApp extends Base {
       refreshCatalog: route("catalog", "refreshCatalog"),
       editTags: route("catalog", "editTags"),
       setRarity: route("catalog", "setRarity"),
+      showMoreResults: route("catalog", "showMoreResults"),
       ext: EncounterBuilderApp.#onPanelAction,
       replaceEntry: EncounterBuilderApp.#onReplaceEntry,
     },
@@ -134,8 +138,12 @@ export class EncounterBuilderApp extends Base {
     resolved: null,
     evaluation: null,
     draft: emptyDraft(),
-    filter: { relativeMin: -2, relativeMax: 2 },
+    filter: {
+      relativeMin: GENERATOR_BOUND_DEFAULTS.relativeMin,
+      relativeMax: GENERATOR_BOUND_DEFAULTS.relativeMax,
+    },
     results: [],
+    resultTotal: 0,
     busy: false,
     messages: [],
     buildMode: "generate",

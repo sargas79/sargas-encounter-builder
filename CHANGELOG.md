@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- The Browse catalog is no longer cut off at 200 creatures. The header shows the full match count (for example
+  "200 / 734") and a Show more button at the end of the list loads the next 200. Changing a filter starts
+  again from the first page.
+- The generator's relative-level bounds now default to -2 / +2, like Browse. Any combination within -4..+4
+  can still be chosen.
+
 ## 0.4.0
 
 Accessibility, layout and internal restructuring:

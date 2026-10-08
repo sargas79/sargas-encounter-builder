@@ -920,6 +920,15 @@
 .seb-note > i {
   margin-top: 2px;
 }
+.seb-catalog-more {
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0;
+}
+.seb-catalog-more > button {
+  flex: none;
+  width: auto;
+}
 .seb-note.is-info {
   border-left-color: var(--seb-accent);
 }
