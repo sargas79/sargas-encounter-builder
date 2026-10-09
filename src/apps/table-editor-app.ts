@@ -305,7 +305,7 @@ export class EncounterTableEditor extends Base {
     if (this.dirty && !this.#discardConfirmed) {
       if (this.#closePrompt) return this;
       this.#closePrompt = true;
-      let ok = false;
+      let ok: boolean;
       try {
         ok = await confirm(
           t("editor.unsavedTitle"),

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+Development only; no change to the module's behaviour.
+
+- ESLint upgraded from 9 (no longer supported) to 10. Its new `no-useless-assignment` rule flagged one
+  redundant initial value in the table editor, now removed.
+- The test-only Handlebars dependency is updated to clear a new security advisory (`npm audit` is clean).
+  Foundry's own Handlebars renders the module's templates, so released builds were not affected.
+
 ## 0.4.1
 
 - The Browse catalog is no longer cut off at 200 creatures. The header shows the full match count (for example
