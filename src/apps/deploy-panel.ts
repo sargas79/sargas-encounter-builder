@@ -55,6 +55,8 @@ export class DeployPanel implements Panel {
       preview: {
         actors: preview.plan.actors.map((a) => ({
           ...a,
+          adjustmentLabel: a.adjustment ? t(`build.adjustment.${a.adjustment}`) : "",
+          adjustmentClass: a.adjustment ? `is-${a.adjustment}` : "",
           policyLabel: a.reuseActorUuid
             ? t("deploy.reuseExisting")
             : a.sourceUuid.startsWith("Actor.")

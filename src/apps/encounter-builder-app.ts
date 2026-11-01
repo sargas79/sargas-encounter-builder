@@ -568,8 +568,8 @@ export class EncounterBuilderApp extends Base {
   }
 
   static async #onReplaceEntry(this: EncounterBuilderApp, _event: Event, target: HTMLElement): Promise<void> {
-    const uuid = target.closest<HTMLElement>("[data-uuid]")?.dataset.uuid;
-    if (uuid) await this.panels.generator.replaceEntry(uuid);
+    const key = target.closest<HTMLElement>("[data-key]")?.dataset.key;
+    if (key) await this.panels.generator.replaceEntry(key);
   }
 
   static async #onSelectTab(this: EncounterBuilderApp, _event: Event, target: HTMLElement): Promise<void> {

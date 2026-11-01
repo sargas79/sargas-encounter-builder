@@ -60,13 +60,14 @@
       {{#if build.meter}}{{> "modules/sargas-encounter-builder/templates/builder/meter.hbs" meter=build.meter}}{{/if}}
       <div class="seb-scroll seb-list">
         {{#each build.draft}}
-        <div class="seb-row seb-creature{{#if this.locked}} is-locked{{/if}}" data-uuid="{{this.uuid}}">
+        <div class="seb-row seb-creature{{#if this.locked}} is-locked{{/if}}" data-uuid="{{this.uuid}}" data-key="{{this.key}}">
           <img class="seb-portrait" src="{{#if this.img}}{{this.img}}{{else}}icons/svg/mystery-man.svg{{/if}}" alt="">
           <div class="seb-row-main">
-            <span class="seb-row-name">{{this.name}}{{#if this.statusLabel}} <span class="seb-pill is-warn">{{this.statusLabel}}</span>{{/if}}</span>
+            <span class="seb-row-name">{{this.name}}{{#if this.adjustmentLabel}} <span class="seb-pill seb-adjustment {{this.adjustmentClass}}">{{this.adjustmentLabel}}</span>{{/if}}{{#if this.statusLabel}} <span class="seb-pill is-warn">{{this.statusLabel}}</span>{{/if}}</span>
             <span class="seb-row-meta">{{localize "sargas-encounter-builder.build.levelShort" level=this.level}} <span class="seb-text-dim">({{this.relative}})</span>{{#if (ne this.xpEach null)}} · {{this.xpEach}} XP{{/if}}{{#if (ne this.subtotal null)}} · <strong>{{this.subtotal}} XP</strong>{{/if}}</span>
           </div>
           <div class="seb-row-controls">
+            <select class="seb-adjustment-select" name="adjustment" aria-label="{{localize 'sargas-encounter-builder.build.adjustment.label'}}" data-tooltip="{{localize 'sargas-encounter-builder.build.adjustment.label'}}">{{#each this.adjustments}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}</select>
             <input class="seb-qty" type="number" name="quantity" min="0" value="{{this.quantity}}" aria-label="{{localize 'sargas-encounter-builder.build.qty'}}">
             <button type="button" class="seb-icon-button{{#if this.locked}} is-active{{/if}}" data-action="lockCreature" data-tooltip="{{localize 'sargas-encounter-builder.build.lock'}}" aria-label="{{localize 'sargas-encounter-builder.build.lock'}}" aria-pressed="{{#if this.locked}}true{{else}}false{{/if}}"><i class="fa-solid {{#if this.locked}}fa-lock{{else}}fa-lock-open{{/if}}"></i></button>
             <button type="button" class="seb-icon-button" data-action="replaceEntry" data-tooltip="{{localize 'sargas-encounter-builder.generator.replace'}}" aria-label="{{localize 'sargas-encounter-builder.generator.replace'}}" {{#if this.locked}}disabled{{/if}}><i class="fa-solid fa-shuffle"></i></button>

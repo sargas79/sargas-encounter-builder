@@ -118,6 +118,12 @@ class FakeGateway implements DeploymentGateway {
       return token as unknown as TokenDocument;
     });
   }
+  adjusted: { token: string; adjustment: string }[] = [];
+  failAdjustment = false;
+  async applyAdjustment(token: TokenDocument, adjustment: "elite" | "weak") {
+    if (this.failAdjustment) throw new Error("adjustment failed");
+    this.adjusted.push({ token: token.uuid, adjustment });
+  }
   activeCombat() {
     return (this.combats[0] as unknown as CombatDocument) ?? null;
   }
@@ -287,6 +293,69 @@ describe("T19: reuse matches on compendium source only; fresh copies preserve pr
     expect(outcome.ledger.reused).toEqual([]);
     expect(gateway.importCount).toBe(1);
     expect(outcome.ledger.created.filter((c) => c.kind === "Token")).toHaveLength(3);
+  });
+});
+
+describe("elite and weak creatures", () => {
+  const options = {
+    sceneId: "scene1",
+    importPolicy: "fresh" as const,
+    hidden: true,
+    addToCombat: "none" as const,
+    numberDuplicates: true,
+  };
+
+  it("plans one group per adjustment and carries the adjustment", () => {
+    const plan = planDeployment(
+      [
+        entry("Compendium.p.Actor.wolf", "Wolf", 2),
+        { ...entry("Compendium.p.Actor.wolf", "Wolf", 1), adjustment: "elite" },
+      ],
+      options,
+      () => null,
+    );
+    expect(plan.actors.map((a) => [a.quantity, a.adjustment])).toEqual([
+      [2, null],
+      [1, "elite"],
+    ]);
+    expect(plan.totalTokens).toBe(3);
+  });
+
+  it("imports the creature once, adjusts only the elite/weak tokens and keeps token names distinct", async () => {
+    const gateway = new FakeGateway();
+    const outcome = await new DeploymentService(gateway).deploy(
+      [
+        entry("Compendium.p.Actor.wolf", "Wolf", 2),
+        { ...entry("Compendium.p.Actor.wolf", "Wolf", 1), adjustment: "elite" },
+        { ...entry("Compendium.p.Actor.wolf", "Wolf", 2), adjustment: "weak" },
+      ],
+      options,
+      null,
+    );
+    expect(outcome.ledger.failures).toEqual([]);
+    expect(gateway.importCount).toBe(1);
+    expect(gateway.tokens).toHaveLength(5);
+    expect(new Set(gateway.tokens.map((tk) => tk.name)).size).toBe(5);
+    expect(gateway.adjusted.map((a) => a.adjustment)).toEqual(["elite", "weak", "weak"]);
+    // Only the adjusted tokens, never the world actor.
+    expect(gateway.adjusted.map((a) => a.token)).toEqual([
+      gateway.tokens[2]!.uuid,
+      gateway.tokens[3]!.uuid,
+      gateway.tokens[4]!.uuid,
+    ]);
+  });
+
+  it("reports a failed adjustment but keeps the token", async () => {
+    const gateway = new FakeGateway();
+    gateway.failAdjustment = true;
+    const outcome = await new DeploymentService(gateway).deploy(
+      [{ ...entry("Compendium.p.Actor.wolf", "Wolf", 1), adjustment: "elite" }],
+      options,
+      null,
+    );
+    expect(gateway.tokens).toHaveLength(1);
+    expect(outcome.ledger.failures).toHaveLength(1);
+    expect(outcome.ledger.failures[0]?.stage).toBe("place");
   });
 });
 

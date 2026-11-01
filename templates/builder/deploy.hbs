@@ -39,7 +39,7 @@
       <div class="seb-panel-head"><span class="seb-eyebrow">{{localize "sargas-encounter-builder.deploy.preview"}} <span class="seb-text-dim">· {{deploy.preview.totalTokens}} {{localize "sargas-encounter-builder.deploy.tokens"}}{{#if deploy.preview.scene}} · {{deploy.preview.scene.name}} · {{deploy.preview.scene.gridLabel}}{{/if}}</span></span></div>
       <div class="seb-scroll seb-list">
         {{#each deploy.preview.actors}}
-        <div class="seb-row"><i class="fa-solid fa-chess-pawn seb-row-icon"></i><div class="seb-row-main"><span class="seb-row-name">{{this.name}}</span><span class="seb-row-meta">{{this.policyLabel}} · <span class="seb-mono">{{this.sourceUuid}}</span></span></div><div class="seb-row-controls"><span class="seb-pill is-level">× {{this.quantity}}</span></div></div>
+        <div class="seb-row"><i class="fa-solid fa-chess-pawn seb-row-icon"></i><div class="seb-row-main"><span class="seb-row-name">{{this.name}}{{#if this.adjustmentLabel}} <span class="seb-pill seb-adjustment {{this.adjustmentClass}}">{{this.adjustmentLabel}}</span>{{/if}}</span><span class="seb-row-meta">{{this.policyLabel}} · <span class="seb-mono">{{this.sourceUuid}}</span></span></div><div class="seb-row-controls"><span class="seb-pill is-level">× {{this.quantity}}</span></div></div>
         {{else}}
         <div class="seb-empty"><i class="fa-solid fa-skull"></i><p class="seb-empty-title">{{localize "sargas-encounter-builder.build.emptyDraftTitle"}}</p><p class="seb-empty-hint">{{localize "sargas-encounter-builder.deploy.emptyHint"}}</p></div>
         {{/each}}

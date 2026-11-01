@@ -4,7 +4,7 @@
  * failures can be reported exactly and cleaned up safely.
  */
 import { FLAGS, MODULE_ID } from "../constants.js";
-import type { DraftEntry } from "./draft.js";
+import type { CreatureAdjustment, DraftEntry } from "./draft.js";
 
 export type ImportPolicy = "reuse" | "fresh";
 
@@ -19,6 +19,8 @@ export interface DeploymentOptions {
 export interface PlannedActor {
   sourceUuid: string;
   name: string;
+  /** Applied to each deployed token's (unlinked) actor; null deploys the creature unmodified. */
+  adjustment: CreatureAdjustment | null;
   quantity: number;
   /** World actor to reuse (uuid) or null to import fresh. Resolved by the service before execution. */
   reuseActorUuid: string | null;
@@ -40,6 +42,7 @@ export function planDeployment(
     .map((e) => ({
       sourceUuid: e.uuid,
       name: e.name,
+      adjustment: e.adjustment ?? null,
       quantity: e.quantity,
       reuseActorUuid: options.importPolicy === "reuse" ? reuse(e.uuid) : null,
     }));

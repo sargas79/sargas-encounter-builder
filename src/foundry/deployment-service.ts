@@ -21,7 +21,7 @@ import {
   type DeploymentOptions,
   type DeploymentPlan,
 } from "../core/deployment.js";
-import type { DraftEntry } from "../core/draft.js";
+import type { CreatureAdjustment, DraftEntry } from "../core/draft.js";
 import { footprintCells, placeTokens, tokenNames, type PlacementRequest } from "../core/placement.js";
 import { documentClass, gridTypes, isGM, randomID } from "./compat.js";
 import { t } from "./i18n.js";
@@ -34,6 +34,8 @@ export interface DeploymentGateway {
   importActor(sourceUuid: string): Promise<ActorDocument>;
   getActor(uuid: string): Promise<ActorDocument | null>;
   createTokens(scene: SceneDocument, data: Record<string, unknown>[]): Promise<TokenDocument[]>;
+  /** Make a deployed (unlinked) token's creature elite or weak. */
+  applyAdjustment(token: TokenDocument, adjustment: CreatureAdjustment): Promise<void>;
   activeCombat(sceneId: string): CombatDocument | null;
   createCombat(sceneId: string): Promise<CombatDocument>;
   addCombatants(
@@ -144,9 +146,22 @@ export class DeploymentService {
     }
     const scene = this.gateway.getScene(options.sceneId)!;
 
-    // 1. Resolve actors (import or reuse).
-    const resolvedActors: { actor: ActorDocument; quantity: number; name: string }[] = [];
+    // 1. Resolve actors (import or reuse). Elite/weak rows of one creature share its world actor;
+    // the adjustment goes on each unlinked token's actor, never on the world actor.
+    const resolvedActors: {
+      actor: ActorDocument;
+      quantity: number;
+      name: string;
+      adjustment: CreatureAdjustment | null;
+    }[] = [];
+    const resolvedBySource = new Map<string, ActorDocument>();
     for (const planned of preview.plan.actors) {
+      const adjustment = planned.adjustment;
+      const known = resolvedBySource.get(planned.sourceUuid);
+      if (known) {
+        resolvedActors.push({ actor: known, quantity: planned.quantity, name: planned.name, adjustment });
+        continue;
+      }
       try {
         let actor: ActorDocument | null = null;
         if (planned.reuseActorUuid) {
@@ -161,7 +176,8 @@ export class DeploymentService {
           actor = await this.gateway.importActor(planned.sourceUuid);
           ledger.record({ kind: "Actor", id: actor.id, uuid: actor.uuid, name: actor.name });
         }
-        resolvedActors.push({ actor, quantity: planned.quantity, name: planned.name });
+        resolvedBySource.set(planned.sourceUuid, actor);
+        resolvedActors.push({ actor, quantity: planned.quantity, name: planned.name, adjustment });
       } catch (error) {
         ledger.fail({
           stage: "import",
@@ -194,25 +210,31 @@ export class DeploymentService {
       );
 
       const requests: PlacementRequest[] = [];
-      const byId = new Map<string, { actor: ActorDocument; name: string }>();
+      const byId = new Map<
+        string,
+        { actor: ActorDocument; name: string; adjustment: CreatureAdjustment | null }
+      >();
       const existingNames = scene.tokens.contents.map((tk) => tk.name);
-      for (const { actor, quantity } of resolvedActors) {
+      resolvedActors.forEach(({ actor, quantity, adjustment }, group) => {
+        const baseName = actor.prototypeToken?.name || actor.name;
         const names = tokenNames(
-          actor.prototypeToken?.name || actor.name,
+          adjustment ? t(`build.adjustment.tokenName.${adjustment}`, { name: baseName }) : baseName,
           quantity,
           options.numberDuplicates,
           existingNames,
         );
+        // Later groups of the same creature (another adjustment) number on from these.
+        existingNames.push(...names);
         for (let k = 0; k < quantity; k++) {
-          const id = `${actor.id}:${k}`;
+          const id = `${group}:${k}`;
           requests.push({
             id,
             width: actor.prototypeToken?.width ?? 1,
             height: actor.prototypeToken?.height ?? 1,
           });
-          byId.set(id, { actor, name: names[k]! });
+          byId.set(id, { actor, name: names[k]!, adjustment });
         }
-      }
+      });
       const placement = placeTokens(requests, originCell, bounds, occupied);
       unplaced = placement.unplaced.length;
       if (unplaced > 0) {
@@ -224,8 +246,10 @@ export class DeploymentService {
       } else {
         try {
           const data: Record<string, unknown>[] = [];
+          const adjustments: (CreatureAdjustment | null)[] = [];
           for (const p of placement.placed) {
-            const { actor, name } = byId.get(p.id)!;
+            const { actor, name, adjustment } = byId.get(p.id)!;
+            adjustments.push(adjustment);
             data.push(
               await tokenData(actor, {
                 name,
@@ -241,6 +265,20 @@ export class DeploymentService {
           for (const tk of tokens) {
             ledger.record({ kind: "Token", id: tk.id, uuid: tk.uuid, name: tk.name });
             placedTokens.push(tk);
+          }
+          // Tokens come back in request order. A failed adjustment leaves the token deployed unmodified.
+          for (const [i, tk] of tokens.entries()) {
+            const adjustment = adjustments[i];
+            if (!adjustment) continue;
+            try {
+              await this.gateway.applyAdjustment(tk, adjustment);
+            } catch (error) {
+              ledger.fail({
+                stage: "place",
+                subject: tk.name,
+                message: error instanceof Error ? error.message : String(error),
+              });
+            }
           }
         } catch (error) {
           ledger.fail({
@@ -373,6 +411,15 @@ export class FoundryDeploymentGateway implements DeploymentGateway {
 
   async createTokens(scene: SceneDocument, data: Record<string, unknown>[]): Promise<TokenDocument[]> {
     return scene.createEmbeddedDocuments("Token", data) as Promise<TokenDocument[]>;
+  }
+
+  async applyAdjustment(token: TokenDocument, adjustment: CreatureAdjustment): Promise<void> {
+    // PF2e's NPC#applyAdjustment sets system.attributes.adjustment and rescales current HP; on an
+    // unlinked token it writes the token's actor delta, leaving the world actor untouched.
+    const actor = token.actor;
+    if (typeof actor?.applyAdjustment !== "function")
+      throw new Error(t("deploy.adjustmentUnsupported", { adjustment }));
+    await actor.applyAdjustment(adjustment);
   }
 
   activeCombat(sceneId: string): CombatDocument | null {

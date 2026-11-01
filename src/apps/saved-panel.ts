@@ -2,6 +2,7 @@
  * Saved tab: list, open, recalculate, update-evaluation, duplicate, rename, delete saved encounters,
  * plus "save current encounter" from the Build tab.
  */
+import { adjustedLevel } from "../core/draft.js";
 import {
   draftFromRecipe,
   duplicateRecipe,
@@ -73,7 +74,12 @@ export class SavedPanel implements Panel {
       notes: r.notes,
       origin: t(`saved.origin.${r.origin}`),
       policy: r.policy ? t(`saved.policy.${r.policy}`) : null,
-      entries: r.entries,
+      entries: r.entries.map((e) => ({
+        ...e,
+        level: adjustedLevel(e.level, e.adjustment),
+        adjustmentLabel: e.adjustment ? t(`build.adjustment.${e.adjustment}`) : "",
+        adjustmentClass: e.adjustment ? `is-${e.adjustment}` : "",
+      })),
       seed: r.generation?.seed ?? null,
       evaluation: r.evaluation ? describeSnapshot(r.evaluation) : null,
       hasTrace: r.trace !== undefined,

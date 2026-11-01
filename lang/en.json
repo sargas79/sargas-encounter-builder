@@ -233,6 +233,16 @@
       "emptyDraft": "Generate an encounter, add creatures from the catalog, or drop an NPC here.",
       "lock": "Lock (kept by the generator)",
       "remove": "Remove",
+      "adjustment": {
+        "label": "Elite / weak adjustment",
+        "normal": "Normal",
+        "elite": "Elite",
+        "weak": "Weak",
+        "tokenName": {
+          "elite": "Elite {name}",
+          "weak": "Weak {name}"
+        }
+      },
       "clear": "Clear encounter",
       "toDeploy": "Deploy…",
       "worldActor": "World actor"
@@ -581,6 +591,7 @@
       "reuseExisting": "reuse existing world actor",
       "worldActor": "world actor",
       "freshImport": "import fresh copy",
+      "adjustmentUnsupported": "the system cannot apply the {adjustment} adjustment; the token was placed unmodified",
       "warnings": {
         "unsupportedGrid": "This scene is gridless: tokens are placed on a square spiral in pixel units; check positions.",
         "unknownSource": "An entry has an unrecognized source UUID.",
