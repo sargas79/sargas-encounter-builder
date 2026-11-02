@@ -10,12 +10,17 @@ import {
   type ThreatLevel,
 } from "./budget.js";
 import type { CatalogEntry } from "./catalog.js";
-import type { RecipeEntry } from "./schemas.js";
+import type { CreatureAdjustment, RecipeEntry } from "./schemas.js";
+
+export type { CreatureAdjustment };
 
 export interface DraftEntry {
   uuid: string;
   name: string;
+  /** The source creature's level; see `effectiveLevel` for the level after an adjustment. */
   level: number;
+  /** Elite or weak adjustment; absent or null means the unmodified creature. */
+  adjustment?: CreatureAdjustment | null;
   quantity: number;
   locked: boolean;
   img: string | null;
@@ -55,28 +60,91 @@ export function entryFromCatalog(entry: DraftEntrySource, quantity = 1): DraftEn
   };
 }
 
+/**
+ * Level after the elite/weak adjustment (GM Core): elite is +1, or +2 from level -1 or 0;
+ * weak is -1, or -2 from level 1.
+ */
+export function adjustedLevel(level: number, adjustment: CreatureAdjustment | null | undefined): number {
+  if (adjustment === "elite") return level <= 0 ? level + 2 : level + 1;
+  if (adjustment === "weak") return level === 1 ? level - 2 : level - 1;
+  return level;
+}
+
+export function effectiveLevel(entry: Pick<DraftEntry, "level" | "adjustment">): number {
+  return adjustedLevel(entry.level, entry.adjustment);
+}
+
+/**
+ * Draft identity: the source uuid plus the adjustment, so an elite and a normal copy of the same
+ * creature are separate rows. An unadjusted entry's key is its uuid.
+ */
+export function entryKey(entry: Pick<DraftEntry, "uuid" | "adjustment">): string {
+  return entry.adjustment ? `${entry.uuid}#${entry.adjustment}` : entry.uuid;
+}
+
 export function addEntry(draft: Draft, entry: DraftEntry): Draft {
-  const existing = draft.entries.find((e) => e.uuid === entry.uuid);
+  const key = entryKey(entry);
+  const existing = draft.entries.find((e) => entryKey(e) === key);
   const entries = existing
-    ? draft.entries.map((e) => (e.uuid === entry.uuid ? { ...e, quantity: e.quantity + entry.quantity } : e))
+    ? draft.entries.map((e) => (entryKey(e) === key ? { ...e, quantity: e.quantity + entry.quantity } : e))
     : [...draft.entries, entry];
   return { ...draft, entries };
 }
 
-export function setQuantity(draft: Draft, uuid: string, quantity: number): Draft {
+export function setQuantity(draft: Draft, key: string, quantity: number): Draft {
   const q = Math.max(0, Math.floor(Number(quantity) || 0));
   const entries = draft.entries
-    .map((e) => (e.uuid === uuid ? { ...e, quantity: q } : e))
+    .map((e) => (entryKey(e) === key ? { ...e, quantity: q } : e))
     .filter((e) => e.quantity > 0);
   return { ...draft, entries };
 }
 
-export function removeEntry(draft: Draft, uuid: string): Draft {
+export function removeEntry(draft: Draft, key: string): Draft {
+  return { ...draft, entries: draft.entries.filter((e) => entryKey(e) !== key) };
+}
+
+/** Every entry of a source creature, whatever its adjustment (e.g. when excluding it from generation). */
+export function removeCreature(draft: Draft, uuid: string): Draft {
   return { ...draft, entries: draft.entries.filter((e) => e.uuid !== uuid) };
 }
 
-export function toggleLock(draft: Draft, uuid: string): Draft {
-  return { ...draft, entries: draft.entries.map((e) => (e.uuid === uuid ? { ...e, locked: !e.locked } : e)) };
+export function toggleLock(draft: Draft, key: string): Draft {
+  return {
+    ...draft,
+    entries: draft.entries.map((e) => (entryKey(e) === key ? { ...e, locked: !e.locked } : e)),
+  };
+}
+
+/**
+ * Change an entry's adjustment in place. When another row already has that creature with the new
+ * adjustment, the two merge (quantities add; the merged row is locked if either was).
+ */
+export function setAdjustment(draft: Draft, key: string, adjustment: CreatureAdjustment | null): Draft {
+  const entry = draft.entries.find((e) => entryKey(e) === key);
+  if (!entry || (entry.adjustment ?? null) === adjustment) return draft;
+  const updated: DraftEntry = { ...entry, adjustment };
+  const twin = draft.entries.find((e) => entryKey(e) === entryKey(updated));
+  if (!twin) return { ...draft, entries: draft.entries.map((e) => (e === entry ? updated : e)) };
+  const entries = draft.entries
+    .filter((e) => e !== entry)
+    .map((e) =>
+      e === twin ? { ...e, quantity: e.quantity + entry.quantity, locked: e.locked || entry.locked } : e,
+    );
+  return { ...draft, entries };
+}
+
+/**
+ * A rerolled draft's rows: the kept rows as they were (lock state and elite/weak adjustment included),
+ * then the newly generated creatures. The generator echoes kept rows back as locked entries; those are
+ * skipped. A generated creature that matches an unadjusted kept row adds to its quantity.
+ */
+export function mergeGenerated(
+  kept: DraftEntry[],
+  generated: (DraftEntrySource & { quantity: number; locked: boolean })[],
+): DraftEntry[] {
+  let draft: Draft = { entries: kept, origin: "generated" };
+  for (const e of generated) if (!e.locked) draft = addEntry(draft, entryFromCatalog(e, e.quantity));
+  return draft.entries;
 }
 
 export function totalCreatures(draft: Draft): number {
@@ -88,6 +156,7 @@ export function toRecipeEntries(draft: Draft): RecipeEntry[] {
     uuid: e.uuid,
     name: e.name,
     level: e.level,
+    ...(e.adjustment ? { adjustment: e.adjustment } : {}),
     quantity: e.quantity,
     locked: e.locked,
   }));
@@ -118,7 +187,12 @@ export function evaluateDraft(draft: Draft, options: EvaluateDraftOptions): Draf
     partySize: options.partySize,
     referenceLevel: options.referenceLevel,
     selectedThreat: options.selectedThreat,
-    entries: draft.entries.map((e) => ({ id: e.uuid, name: e.name, level: e.level, quantity: e.quantity })),
+    entries: draft.entries.map((e) => ({
+      id: entryKey(e),
+      name: e.name,
+      level: effectiveLevel(e),
+      quantity: e.quantity,
+    })),
   });
   if (!options.pwol) return { ...base, systemCalculation: false, variantUnsupported: false };
 

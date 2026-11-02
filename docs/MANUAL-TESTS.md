@@ -104,6 +104,15 @@ Run the **deployment** batch a second time logged in as a **player**: T22 must r
 - Info messages clear after ~8 s; warnings stay until dismissed. Narrow the window below 820 px: layout stacks.
 - Quench batches appear even if a migration fails.
 
+## B4. 0.5.0 elite and weak creatures (need a live Foundry session)
+
+- Add a creature twice, set one row to Elite: two rows, the elite one a level higher with the higher XP.
+- Deploy 2 normal + 1 elite + 1 weak of one creature: one world actor; the elite and weak tokens show the PF2e
+  adjustment (HP, sheet banner) and the world actor does not. Token names read "Elite …" / "Weak …" exactly
+  once (not "Elite Elite …").
+- Save, reload the world, open the encounter: adjustments and XP are unchanged; the journal summary lists them.
+- Lock an elite row and reroll: the elite row is kept as is.
+
 ## C. Review items (T24)
 
 - `git grep -i` for Paizo proper nouns in `src/`, `lang/`, `docs/`, `tests/`: none expected.

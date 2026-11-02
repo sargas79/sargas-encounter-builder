@@ -84,6 +84,8 @@ declare global {
       data?: Record<string, unknown>,
       options?: Record<string, unknown>,
     ): Promise<TokenDocument>;
+    /** PF2e NPCs: make the creature elite or weak (null removes the adjustment). */
+    applyAdjustment?(adjustment: "elite" | "weak" | null): Promise<void>;
     /** PF2e: the actor's inventory (physical items). */
     inventory?: {
       addCoins?(coins: { pp?: number; gp?: number; sp?: number; cp?: number }): Promise<void>;

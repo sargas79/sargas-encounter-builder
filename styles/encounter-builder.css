@@ -601,6 +601,11 @@
   padding: 0 4px;
   text-align: center;
 }
+.seb .seb-adjustment-select {
+  width: auto;
+  height: 26px;
+  padding: 0 4px;
+}
 
 /* Pills */
 
@@ -635,6 +640,13 @@
 }
 .seb-pill.is-tag {
   color: var(--seb-tag);
+}
+.seb-adjustment.is-elite {
+  border-color: var(--seb-danger-border);
+  color: var(--seb-danger);
+}
+.seb-adjustment.is-weak {
+  color: var(--seb-ok);
 }
 .seb-rarity.is-uncommon {
   color: var(--seb-rarity-uncommon);

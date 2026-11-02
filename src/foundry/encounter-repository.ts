@@ -3,6 +3,7 @@
  * GM-private by default, with data in a versioned flag.
  */
 import { FLAGS, MODULE_ID } from "../constants.js";
+import { adjustedLevel } from "../core/draft.js";
 import { validateRecipe, type Recipe } from "../core/schemas.js";
 import { documentClass, ownershipLevels } from "./compat.js";
 import { escapeHtml as escape } from "../core/util.js";
@@ -159,14 +160,21 @@ function text(key: string, fallback: string, data: Record<string, unknown> = {})
 
 function summaryHtml(recipe: Recipe): string {
   const rows = recipe.entries
-    .map(
-      (e) =>
-        `<li>${text("journal.summaryEntry", "{name} (level {level}) × {quantity}", {
-          name: escape(e.name),
-          level: e.level,
-          quantity: e.quantity,
-        })}</li>`,
-    )
+    .map((e) => {
+      const data = {
+        name: escape(e.name),
+        level: adjustedLevel(e.level, e.adjustment),
+        quantity: e.quantity,
+      };
+      const line = e.adjustment
+        ? text(
+            `journal.summaryEntry${e.adjustment === "elite" ? "Elite" : "Weak"}`,
+            `{name} (${e.adjustment}, level {level}) × {quantity}`,
+            data,
+          )
+        : text("journal.summaryEntry", "{name} (level {level}) × {quantity}", data);
+      return `<li>${line}</li>`;
+    })
     .join("");
   const ev = recipe.evaluation;
   const evText = ev

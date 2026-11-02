@@ -3,13 +3,7 @@
  */
 import type { CatalogFilter } from "../core/catalog.js";
 import type { CustomThemeRecord } from "../core/schemas.js";
-import {
-  entryFromCatalog,
-  removeEntry,
-  type Draft,
-  type DraftEntry,
-  type DraftEntrySource,
-} from "../core/draft.js";
+import { effectiveLevel, entryKey, mergeGenerated, removeCreature, type Draft } from "../core/draft.js";
 import { GENERATOR_BOUND_DEFAULTS, setGeneratorBound } from "../core/generator-options.js";
 import { hashSeed, rngFromSeed } from "../core/rng.js";
 import {
@@ -261,14 +255,15 @@ export class GeneratorPanel implements Panel {
     await this.#run({ freshSeed: true, excludeThemeIds: current ? [current] : [], forceAuto: true });
   }
 
-  async replaceEntry(uuid: string): Promise<void> {
-    await this.#run({ replaceUuid: uuid });
+  /** Reroll one draft row, identified by its `entryKey`. */
+  async replaceEntry(key: string): Promise<void> {
+    await this.#run({ replaceKey: key });
   }
 
   async exclude(uuid: string): Promise<void> {
     if (!this.options.excludeUuids.includes(uuid)) this.options.excludeUuids.push(uuid);
     if (this.app.state.draft.entries.some((e) => e.uuid === uuid)) {
-      this.app.setDraft(removeEntry(this.app.state.draft, uuid));
+      this.app.setDraft(removeCreature(this.app.state.draft, uuid));
     }
     await this.app.render({ parts: ["build", "deploy", "footer"] });
   }
@@ -364,12 +359,12 @@ export class GeneratorPanel implements Panel {
 
   async #run({
     freshSeed = false,
-    replaceUuid,
+    replaceKey,
     excludeThemeIds = [],
     forceAuto = false,
   }: {
     freshSeed?: boolean;
-    replaceUuid?: string;
+    replaceKey?: string;
     excludeThemeIds?: string[];
     forceAuto?: boolean;
   }): Promise<void> {
@@ -387,19 +382,20 @@ export class GeneratorPanel implements Panel {
       const referenceLevel = roster.reference.level!;
       const { candidates } = await this.themes();
       const draft = this.app.state.draft;
-      const locked = draft.entries
-        .filter((e) => (replaceUuid ? e.uuid !== replaceUuid : e.locked))
-        .map((e) => ({
-          uuid: e.uuid,
-          name: e.name,
-          level: e.level,
-          quantity: e.quantity,
-          traits: e.traits,
-          img: e.img,
-          packLabel: e.packLabel,
-        }));
+      const replaced = replaceKey ? draft.entries.find((e) => entryKey(e) === replaceKey) : undefined;
+      // Kept rows go to the generator at their adjusted level, so elite/weak XP counts against the budget.
+      const kept = draft.entries.filter((e) => (replaceKey ? entryKey(e) !== replaceKey : e.locked));
+      const locked = kept.map((e) => ({
+        uuid: e.uuid,
+        name: e.name,
+        level: effectiveLevel(e),
+        quantity: e.quantity,
+        traits: e.traits,
+        img: e.img,
+        packLabel: e.packLabel,
+      }));
       const seed = this.options.seed || (freshSeed || !this.lastSeed ? randomHexSeed() : this.lastSeed);
-      const excludeUuids = [...this.options.excludeUuids, ...(replaceUuid ? [replaceUuid] : [])];
+      const excludeUuids = [...this.options.excludeUuids, ...(replaced ? [replaced.uuid] : [])];
       const input: ThemedInput = {
         threat: resolved.profile.selectedThreat,
         partySize: roster.partySize,
@@ -423,8 +419,7 @@ export class GeneratorPanel implements Panel {
       this.lastResult = result;
       this.lastSeed = seed;
       if (result.ok) {
-        const previousLocks = new Map(draft.entries.map((e) => [e.uuid, e.locked] as const));
-        const entries = mergeEntries(result.entries, previousLocks);
+        const entries = mergeGenerated(kept, result.entries);
         const newDraft: Draft = {
           entries,
           origin: "generated",
@@ -473,19 +468,6 @@ export class GeneratorPanel implements Panel {
     }
     await this.app.render({ parts: ["header", "build", "deploy", "footer"] });
   }
-}
-
-function mergeEntries(
-  entries: (DraftEntrySource & { quantity: number })[],
-  previousLocks: Map<string, boolean>,
-): DraftEntry[] {
-  const map = new Map<string, DraftEntry>();
-  for (const e of entries) {
-    const existing = map.get(e.uuid);
-    if (existing) existing.quantity += e.quantity;
-    else map.set(e.uuid, { ...entryFromCatalog(e, e.quantity), locked: previousLocks.get(e.uuid) ?? false });
-  }
-  return [...map.values()];
 }
 
 function describeCustom(c: CustomThemeRecord): string {
