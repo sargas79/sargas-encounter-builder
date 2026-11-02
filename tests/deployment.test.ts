@@ -345,7 +345,7 @@ describe("elite and weak creatures", () => {
     ]);
   });
 
-  it("reports a failed adjustment but keeps the token", async () => {
+  it("warns about a failed adjustment but keeps the token and a complete deployment", async () => {
     const gateway = new FakeGateway();
     gateway.failAdjustment = true;
     const outcome = await new DeploymentService(gateway).deploy(
@@ -354,8 +354,9 @@ describe("elite and weak creatures", () => {
       null,
     );
     expect(gateway.tokens).toHaveLength(1);
-    expect(outcome.ledger.failures).toHaveLength(1);
-    expect(outcome.ledger.failures[0]?.stage).toBe("place");
+    expect(outcome.ledger.partial).toBe(false);
+    expect(outcome.ledger.warnings).toHaveLength(1);
+    expect(outcome.ledger.warnings[0]?.stage).toBe("place");
   });
 });
 

@@ -14,7 +14,6 @@ import {
   setAdjustment,
   setQuantity,
   toggleLock,
-  type CreatureAdjustment,
 } from "../core/draft.js";
 import { splitList } from "../core/util.js";
 import { debounce, isGM, renderTemplate } from "../foundry/compat.js";
@@ -23,7 +22,7 @@ import { services } from "../foundry/services.js";
 import { promptText } from "./dialogs.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
 import type { Panel } from "./panel.js";
-import { describePackState, draftSummary, meterContext, signed } from "./view-models.js";
+import { adjustmentPill, describePackState, draftSummary, meterContext, signed } from "./view-models.js";
 
 const CATALOG_LIST = `modules/${MODULE_ID}/templates/builder/catalog-list.hbs`;
 /** Rows rendered per page of catalog results; "Show more" adds another page. */
@@ -163,8 +162,7 @@ export class CatalogPanel implements Panel {
           ...entry,
           key,
           level: effectiveLevel(entry),
-          adjustmentLabel: adjustment ? t(`build.adjustment.${adjustment}`) : "",
-          adjustmentClass: adjustment ? `is-${adjustment}` : "",
+          ...adjustmentPill(entry.adjustment),
           adjustments: ["", "elite", "weak"].map((value) => ({
             value,
             label: t(`build.adjustment.${value || "normal"}`),
@@ -234,7 +232,7 @@ export class CatalogPanel implements Panel {
       case "adjustment": {
         const key = keyOf(target);
         if (key) {
-          const adjustment = value === "elite" || value === "weak" ? (value as CreatureAdjustment) : null;
+          const adjustment = value === "elite" || value === "weak" ? value : null;
           this.app.setDraft(setAdjustment(this.app.state.draft, key, adjustment));
           await this.app.render({ parts: ["build", "deploy", "footer"] });
         }

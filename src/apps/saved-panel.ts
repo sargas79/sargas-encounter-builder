@@ -24,7 +24,7 @@ import { confirm, promptText } from "./dialogs.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
 import { panelActions, type Panel } from "./panel.js";
 import type { TreasurePanel } from "./treasure-panel.js";
-import { inferredThreatLabel, signed } from "./view-models.js";
+import { adjustmentPill, inferredThreatLabel, signed } from "./view-models.js";
 
 export class SavedPanel implements Panel {
   readonly actions: ReadonlySet<string> = panelActions<SavedPanel>(
@@ -77,8 +77,7 @@ export class SavedPanel implements Panel {
       entries: r.entries.map((e) => ({
         ...e,
         level: adjustedLevel(e.level, e.adjustment),
-        adjustmentLabel: e.adjustment ? t(`build.adjustment.${e.adjustment}`) : "",
-        adjustmentClass: e.adjustment ? `is-${e.adjustment}` : "",
+        ...adjustmentPill(e.adjustment),
       })),
       seed: r.generation?.seed ?? null,
       evaluation: r.evaluation ? describeSnapshot(r.evaluation) : null,

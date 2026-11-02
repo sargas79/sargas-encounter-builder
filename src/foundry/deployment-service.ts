@@ -266,20 +266,23 @@ export class DeploymentService {
             ledger.record({ kind: "Token", id: tk.id, uuid: tk.uuid, name: tk.name });
             placedTokens.push(tk);
           }
-          // Tokens come back in request order. A failed adjustment leaves the token deployed unmodified.
-          for (const [i, tk] of tokens.entries()) {
-            const adjustment = adjustments[i];
-            if (!adjustment) continue;
-            try {
-              await this.gateway.applyAdjustment(tk, adjustment);
-            } catch (error) {
-              ledger.fail({
-                stage: "place",
-                subject: tk.name,
-                message: error instanceof Error ? error.message : String(error),
-              });
-            }
-          }
+          // Tokens come back in request order. A failed adjustment leaves the token deployed unmodified:
+          // a warning, not a failure, so the GM is not steered towards cleaning up placed tokens.
+          await Promise.all(
+            tokens.map(async (tk, i) => {
+              const adjustment = adjustments[i];
+              if (!adjustment) return;
+              try {
+                await this.gateway.applyAdjustment(tk, adjustment);
+              } catch (error) {
+                ledger.warn({
+                  stage: "place",
+                  subject: tk.name,
+                  message: error instanceof Error ? error.message : String(error),
+                });
+              }
+            }),
+          );
         } catch (error) {
           ledger.fail({
             stage: "place",

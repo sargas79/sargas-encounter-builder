@@ -5,6 +5,7 @@ import {
   emptyDraft,
   entryKey,
   evaluateDraft,
+  mergeGenerated,
   removeCreature,
   removeEntry,
   setAdjustment,
@@ -92,6 +93,34 @@ describe("draft rows are keyed by creature and adjustment", () => {
     expect(merged.entries).toHaveLength(1);
     expect(merged.entries[0]).toMatchObject({ adjustment: "elite", quantity: 3, locked: true });
     expect(setAdjustment(draft, GOBLIN, null)).toBe(draft);
+  });
+});
+
+describe("rerolls keep adjusted rows", () => {
+  const generated = (level: number, quantity: number, locked: boolean, uuid = GOBLIN) => ({
+    uuid,
+    name: "Goblin",
+    level,
+    quantity,
+    locked,
+    img: null,
+    packLabel: null,
+    traits: [],
+  });
+
+  it("keeps kept rows as they were, skips their echoes and merges generated normal copies", () => {
+    const kept = [{ ...entry(3, 1, "elite"), locked: true }, entry(3, 2)];
+    const merged = mergeGenerated(kept, [
+      generated(4, 1, true), // echo of the elite row at its adjusted level
+      generated(3, 2, true), // echo of the normal row
+      generated(3, 1, false), // a new normal goblin joins the normal row
+      generated(5, 1, false, "Compendium.p.Actor.boss"),
+    ]);
+    expect(merged.map((e) => [entryKey(e), e.level, e.quantity, e.locked])).toEqual([
+      [`${GOBLIN}#elite`, 3, 1, true],
+      [GOBLIN, 3, 3, false],
+      ["Compendium.p.Actor.boss", 5, 1, false],
+    ]);
   });
 });
 

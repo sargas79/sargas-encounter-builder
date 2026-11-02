@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0
+
+Elite and weak creatures:
+
+- Each creature in the encounter has a Normal / Elite / Weak choice. XP uses the adjusted level (elite +1,
+  or +2 from level -1 or 0; weak -1, or -2 from level 1), and the threat meter follows.
+- Elite and normal copies of the same creature are separate rows, so "1 elite goblin + 3 goblins" works.
+  Switching a row to an adjustment another row of that creature already has merges the two.
+- Saved encounters keep the adjustment, and their journal summary lists it. Encounters saved before 0.5.0
+  load as normal creatures. A version older than 0.5.0 opening a newer save sees adjusted creatures as normal.
+- The generator keeps locked elite/weak rows on a reroll and counts their adjusted XP against the budget.
+  Rerolling one row replaces only that row; excluding a creature removes all of its rows. With the Pack
+  archetype, a locked elite or weak creature is filled out with normal copies of the same creature.
+- Deployment imports or reuses the creature once and applies the adjustment to each placed (unlinked) token
+  through the PF2e system; the world actor is not changed. Tokens are named "Elite …" / "Weak …". If the
+  system cannot apply an adjustment, the token is placed unmodified and a warning is shown.
+- Elite and Weak pills in the Build, Deploy and Saved tabs.
+
 ## 0.4.2
 
 Development only; no change to the module's behaviour.

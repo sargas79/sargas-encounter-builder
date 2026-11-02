@@ -139,6 +139,8 @@ export class OperationLedger {
   readonly created: CreatedRecord[] = [];
   readonly reused: { kind: "Actor" | "Combat"; uuid: string; name: string }[] = [];
   readonly failures: OperationFailure[] = [];
+  /** Problems that left the deployment complete (e.g. a token placed without its elite/weak adjustment). */
+  readonly warnings: OperationFailure[] = [];
   readonly id: string;
   #finished = false;
 
@@ -156,6 +158,11 @@ export class OperationLedger {
 
   fail(failure: OperationFailure): void {
     this.failures.push(failure);
+  }
+
+  /** Record a problem that does not make the operation partial. */
+  warn(warning: OperationFailure): void {
+    this.warnings.push(warning);
   }
 
   finish(): void {

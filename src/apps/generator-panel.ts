@@ -3,16 +3,7 @@
  */
 import type { CatalogFilter } from "../core/catalog.js";
 import type { CustomThemeRecord } from "../core/schemas.js";
-import {
-  addEntry,
-  effectiveLevel,
-  entryFromCatalog,
-  entryKey,
-  removeCreature,
-  type Draft,
-  type DraftEntry,
-  type DraftEntrySource,
-} from "../core/draft.js";
+import { effectiveLevel, entryKey, mergeGenerated, removeCreature, type Draft } from "../core/draft.js";
 import { GENERATOR_BOUND_DEFAULTS, setGeneratorBound } from "../core/generator-options.js";
 import { hashSeed, rngFromSeed } from "../core/rng.js";
 import {
@@ -428,7 +419,7 @@ export class GeneratorPanel implements Panel {
       this.lastResult = result;
       this.lastSeed = seed;
       if (result.ok) {
-        const entries = mergeEntries(kept, result.entries);
+        const entries = mergeGenerated(kept, result.entries);
         const newDraft: Draft = {
           entries,
           origin: "generated",
@@ -477,20 +468,6 @@ export class GeneratorPanel implements Panel {
     }
     await this.app.render({ parts: ["header", "build", "deploy", "footer"] });
   }
-}
-
-/**
- * The kept draft rows as they were (lock state and elite/weak adjustment included), plus the newly
- * generated creatures. The generator echoes kept rows back as locked entries; those are skipped. A
- * generated creature that matches an unadjusted kept row adds to its quantity.
- */
-function mergeEntries(
-  kept: DraftEntry[],
-  entries: (DraftEntrySource & { quantity: number; locked: boolean })[],
-): DraftEntry[] {
-  let draft: Draft = { entries: kept, origin: "generated" };
-  for (const e of entries) if (!e.locked) draft = addEntry(draft, entryFromCatalog(e, e.quantity));
-  return draft.entries;
 }
 
 function describeCustom(c: CustomThemeRecord): string {

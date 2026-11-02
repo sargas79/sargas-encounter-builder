@@ -133,6 +133,20 @@ export function setAdjustment(draft: Draft, key: string, adjustment: CreatureAdj
   return { ...draft, entries };
 }
 
+/**
+ * A rerolled draft's rows: the kept rows as they were (lock state and elite/weak adjustment included),
+ * then the newly generated creatures. The generator echoes kept rows back as locked entries; those are
+ * skipped. A generated creature that matches an unadjusted kept row adds to its quantity.
+ */
+export function mergeGenerated(
+  kept: DraftEntry[],
+  generated: (DraftEntrySource & { quantity: number; locked: boolean })[],
+): DraftEntry[] {
+  let draft: Draft = { entries: kept, origin: "generated" };
+  for (const e of generated) if (!e.locked) draft = addEntry(draft, entryFromCatalog(e, e.quantity));
+  return draft.entries;
+}
+
 export function totalCreatures(draft: Draft): number {
   return draft.entries.reduce((n, e) => n + e.quantity, 0);
 }
