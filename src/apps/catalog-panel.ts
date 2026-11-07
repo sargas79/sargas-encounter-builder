@@ -6,9 +6,12 @@ import { MODULE_ID } from "../constants.js";
 import { parseTagText } from "../core/catalog.js";
 import {
   addEntry,
+  effectiveLevel,
   emptyDraft,
   entryFromCatalog,
+  entryKey,
   removeEntry,
+  setAdjustment,
   setQuantity,
   toggleLock,
 } from "../core/draft.js";
@@ -19,7 +22,7 @@ import { services } from "../foundry/services.js";
 import { promptText } from "./dialogs.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
 import type { Panel } from "./panel.js";
-import { describePackState, draftSummary, meterContext, signed } from "./view-models.js";
+import { adjustmentPill, describePackState, draftSummary, meterContext, signed } from "./view-models.js";
 
 const CATALOG_LIST = `modules/${MODULE_ID}/templates/builder/catalog-list.hbs`;
 /** Rows rendered per page of catalog results; "Show more" adds another page. */
@@ -152,9 +155,19 @@ export class CatalogPanel implements Panel {
       results: this.#resultsContext(),
       ...this.#countContext(),
       draft: state.draft.entries.map((entry) => {
-        const ev = evaluation?.entries.find((e) => e.id === entry.uuid);
+        const key = entryKey(entry);
+        const ev = evaluation?.entries.find((e) => e.id === key);
+        const adjustment = entry.adjustment ?? "";
         return {
           ...entry,
+          key,
+          level: effectiveLevel(entry),
+          ...adjustmentPill(entry.adjustment),
+          adjustments: ["", "elite", "weak"].map((value) => ({
+            value,
+            label: t(`build.adjustment.${value || "normal"}`),
+            selected: value === adjustment,
+          })),
           xpEach: ev?.xpEach ?? null,
           subtotal: ev?.subtotal ?? null,
           status: ev?.status ?? "supported",
@@ -209,9 +222,18 @@ export class CatalogPanel implements Panel {
     const filter = this.app.state.filter;
     switch (name) {
       case "quantity": {
-        const uuid = target.closest<HTMLElement>("[data-uuid]")?.dataset.uuid;
-        if (uuid) {
-          this.app.setDraft(setQuantity(this.app.state.draft, uuid, Number.parseInt(value, 10)));
+        const key = keyOf(target);
+        if (key) {
+          this.app.setDraft(setQuantity(this.app.state.draft, key, Number.parseInt(value, 10)));
+          await this.app.render({ parts: ["build", "deploy", "footer"] });
+        }
+        return true;
+      }
+      case "adjustment": {
+        const key = keyOf(target);
+        if (key) {
+          const adjustment = value === "elite" || value === "weak" ? value : null;
+          this.app.setDraft(setAdjustment(this.app.state.draft, key, adjustment));
           await this.app.render({ parts: ["build", "deploy", "footer"] });
         }
         return true;
@@ -311,16 +333,16 @@ export class CatalogPanel implements Panel {
   }
 
   async removeCreature(target: HTMLElement): Promise<void> {
-    const uuid = uuidOf(target);
-    if (!uuid) return;
-    this.app.setDraft(removeEntry(this.app.state.draft, uuid));
+    const key = keyOf(target);
+    if (!key) return;
+    this.app.setDraft(removeEntry(this.app.state.draft, key));
     await this.app.render({ parts: ["build", "deploy", "footer"] });
   }
 
   async lockCreature(target: HTMLElement): Promise<void> {
-    const uuid = uuidOf(target);
-    if (!uuid) return;
-    this.app.setDraft(toggleLock(this.app.state.draft, uuid));
+    const key = keyOf(target);
+    if (!key) return;
+    this.app.setDraft(toggleLock(this.app.state.draft, key));
     await this.app.render({ parts: ["build"] });
   }
 
@@ -387,4 +409,9 @@ export class CatalogPanel implements Panel {
 
 function uuidOf(target: HTMLElement): string | undefined {
   return target.closest<HTMLElement>("[data-uuid]")?.dataset.uuid;
+}
+
+/** A draft row's key (`entryKey`): the uuid plus its elite/weak adjustment. */
+export function keyOf(target: HTMLElement): string | undefined {
+  return target.closest<HTMLElement>("[data-key]")?.dataset.key;
 }

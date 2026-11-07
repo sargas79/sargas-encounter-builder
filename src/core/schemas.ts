@@ -49,12 +49,17 @@ export type PartyProfile = PartyProfileV1;
 /*  Saved encounter recipes (JournalEntry flag) */
 /* -------------------------------------------- */
 
+/** PF2e elite/weak creature adjustment. */
+export type CreatureAdjustment = "elite" | "weak";
+
 export interface RecipeEntry {
   uuid: string;
   /** Name at save time, for display when the source is missing. */
   name: string;
-  /** Level at save time, for display when the source is missing. */
+  /** Source level at save time (before any adjustment), for display when the source is missing. */
   level: number;
+  /** Elite/weak adjustment; absent means the unmodified creature. */
+  adjustment?: CreatureAdjustment;
   quantity: number;
   locked: boolean;
 }
@@ -273,7 +278,8 @@ export function validateRecipe(raw: unknown): ValidationResult<Recipe> {
         !isInt(e.quantity) ||
         e.quantity < 0 ||
         !isBool(e.locked) ||
-        !isInt(e.level)
+        !isInt(e.level) ||
+        (e.adjustment !== undefined && e.adjustment !== "elite" && e.adjustment !== "weak")
       ) {
         errors.push(`entries[${i}] invalid`);
       }

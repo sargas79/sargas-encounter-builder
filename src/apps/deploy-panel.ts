@@ -13,6 +13,7 @@ import { t } from "../foundry/i18n.js";
 import { confirm } from "./dialogs.js";
 import type { EncounterBuilderApp } from "./encounter-builder-app.js";
 import { panelActions, type Panel } from "./panel.js";
+import { adjustmentPill } from "./view-models.js";
 
 export class DeployPanel implements Panel {
   readonly actions: ReadonlySet<string> = panelActions<DeployPanel>(
@@ -55,6 +56,7 @@ export class DeployPanel implements Panel {
       preview: {
         actors: preview.plan.actors.map((a) => ({
           ...a,
+          ...adjustmentPill(a.adjustment),
           policyLabel: a.reuseActorUuid
             ? t("deploy.reuseExisting")
             : a.sourceUuid.startsWith("Actor.")
@@ -79,6 +81,7 @@ export class DeployPanel implements Panel {
             failures: ledger.failures.map(
               (f) => `${t(`deploy.stage.${f.stage}`)}: ${f.subject} — ${f.message}`,
             ),
+            warnings: ledger.warnings.map((w) => `${w.subject} — ${w.message}`),
             created: ledger.created.map((c) => `${kindLabel(c.kind)}: ${c.name}`),
             reused: ledger.reused.map((r) => `${kindLabel(r.kind)}: ${r.name}`),
             unplaced: this.lastOutcome?.unplaced ?? 0,

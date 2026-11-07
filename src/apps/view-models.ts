@@ -4,7 +4,7 @@
  */
 import { MODULE_ID } from "../constants.js";
 import { THREAT_LEVELS, tierBudget } from "../core/budget.js";
-import { totalCreatures, type Draft, type DraftEvaluation } from "../core/draft.js";
+import { totalCreatures, type CreatureAdjustment, type Draft, type DraftEvaluation } from "../core/draft.js";
 import type { PackLoadState } from "../foundry/creature-catalog.js";
 import { t } from "../foundry/i18n.js";
 import type { ResolvedParty } from "../foundry/party-service.js";
@@ -39,6 +39,16 @@ export function actorTypeLabel(type: string): string {
   const key = `actorType.${type}`;
   const label = t(key);
   return label === `${MODULE_ID}.${key}` ? type : label;
+}
+
+/** Elite/Weak pill text and colour class; both empty for an unmodified creature. */
+export function adjustmentPill(adjustment: CreatureAdjustment | null | undefined): {
+  adjustmentLabel: string;
+  adjustmentClass: string;
+} {
+  return adjustment
+    ? { adjustmentLabel: t(`build.adjustment.${adjustment}`), adjustmentClass: `is-${adjustment}` }
+    : { adjustmentLabel: "", adjustmentClass: "" };
 }
 
 export function signed(n: number): string {

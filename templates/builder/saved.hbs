@@ -32,7 +32,7 @@
       {{#each saved.missing}}<div class="seb-note is-error">{{localize "sargas-encounter-builder.saved.missingEntry" name=this.name uuid=this.uuid}}</div>{{/each}}
       <div class="seb-scroll seb-list">
         {{#each saved.selected.entries}}
-        <div class="seb-row"><i class="fa-solid {{#if this.locked}}fa-lock{{else}}fa-skull{{/if}} seb-row-icon"></i><div class="seb-row-main"><span class="seb-row-name">{{this.name}}</span><span class="seb-row-meta">{{localize "sargas-encounter-builder.build.levelShort" level=this.level}}</span></div><div class="seb-row-controls"><span class="seb-pill is-level">× {{this.quantity}}</span></div></div>
+        <div class="seb-row"><i class="fa-solid {{#if this.locked}}fa-lock{{else}}fa-skull{{/if}} seb-row-icon"></i><div class="seb-row-main"><span class="seb-row-name">{{this.name}}{{#if this.adjustmentLabel}} <span class="seb-pill seb-adjustment {{this.adjustmentClass}}">{{this.adjustmentLabel}}</span>{{/if}}</span><span class="seb-row-meta">{{localize "sargas-encounter-builder.build.levelShort" level=this.level}}</span></div><div class="seb-row-controls"><span class="seb-pill is-level">× {{this.quantity}}</span></div></div>
         {{/each}}
         {{#if saved.selected.variant}}
         <div class="seb-group-header"><span>{{localize "sargas-encounter-builder.saved.variantOf"}}</span></div>

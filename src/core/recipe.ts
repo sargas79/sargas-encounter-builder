@@ -2,7 +2,14 @@
  * Pure recipe construction and recalculation. Persistence lives in src/foundry/encounter-repository.ts.
  */
 import { evaluateEncounter } from "./budget.js";
-import { toRecipeEntries, type Draft, type DraftEntry, type DraftEvaluation } from "./draft.js";
+import {
+  adjustedLevel,
+  entryKey,
+  toRecipeEntries,
+  type Draft,
+  type DraftEntry,
+  type DraftEvaluation,
+} from "./draft.js";
 import type { RosterState } from "./party.js";
 import type { EvaluationSnapshot, PartyProfile, Recipe, RecipeEntry } from "./schemas.js";
 
@@ -68,6 +75,7 @@ export function draftFromRecipe(
       uuid: e.uuid,
       name: found?.name ?? e.name,
       level: found?.level ?? e.level,
+      ...(e.adjustment ? { adjustment: e.adjustment } : {}),
       quantity: e.quantity,
       locked: e.locked,
       img: found?.img ?? null,
@@ -95,7 +103,12 @@ export function recalculateRecipe(
     partySize,
     referenceLevel,
     selectedThreat: recipe.evaluation?.selectedThreat ?? null,
-    entries: recipe.entries.map((e) => ({ id: e.uuid, name: e.name, level: e.level, quantity: e.quantity })),
+    entries: recipe.entries.map((e) => ({
+      id: entryKey(e),
+      name: e.name,
+      level: adjustedLevel(e.level, e.adjustment),
+      quantity: e.quantity,
+    })),
   });
   return {
     timestamp: Date.now(),
